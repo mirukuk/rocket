@@ -1,0 +1,31 @@
+name: Daily Market Analysis
+
+on:
+  schedule:
+    - cron: '0 15 * * *'  # 11pm HK (UTC+8)
+    - cron: '0 23 * * *'  # 7am HK (UTC+8)
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: pip install yfinance requests
+          
+      - name: Generate HTML
+        run: python generate_html.py
+        
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./
+          publish_branch: gh-pages
