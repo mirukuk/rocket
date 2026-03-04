@@ -2,13 +2,18 @@ name: Daily Market Analysis
 
 on:
   schedule:
-    - cron: '0 15 * * *'  # 11pm HK (UTC+8)
-    - cron: '0 23 * * *'  # 7am HK (UTC+8)
+    # Mon-Fri 11pm HKT (end of US market day)
+    - cron: '0 15 * * 1-5'
+    # Tue-Sat 6am HKT (morning recap, saves history)
+    - cron: '0 22 * * 1-5'
   workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
     steps:
       - uses: actions/checkout@v4
       
@@ -18,11 +23,31 @@ jobs:
           python-version: '3.11'
           
       - name: Install dependencies
-        run: pip install yfinance requests
-          
-      - name: Generate HTML
-        run: python generate_html.py
-        
+        run: pip install yfinance requests pandas numpy
+
+      - name: Determine run mode
+        id: mode
+        run: |
+          HOUR=$(date -u +%H)
+          if [ "$HOUR" = "22" ]; then
+            echo "flag=--save-history" >> $GITHUB_OUTPUT
+            echo "Morning run (6am HKT) - saving history"
+          else
+            echo "flag=--no-save-history" >> $GITHUB_OUTPUT
+            echo "Evening run (11pm HKT) - no history save"
+          fi
+
+      - name: Run screener
+        run: python run_all.py ${{ steps.mode.outputs.flag }}
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html history/
+          git diff --cached --quiet || git commit -m "Update $(date -u '+%Y-%m-%d %H:%M') UTC"
+          git push
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
