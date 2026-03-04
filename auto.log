@@ -1,0 +1,236 @@
+Running 7am HKT scan (with history)...
+/home/admin/stock/run_all.py:463: SyntaxWarning: "\ " is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\ "? A raw string is also an option.
+  os.system('cd /tmp/rocket && git commit -m "Update $(date +%Y-%m-%d\ %H:%M)" 2>/dev/null || true')
+Already up to date.
+[main 6bb9210] Update 2026-02-27 23:00
+ 1 file changed, 11 insertions(+), 11 deletions(-)
+============================================================
+  RUNNING ALL SCREENERS
+============================================================
+
+[MARKET ANALYSIS]
+
+[ETF SCREENER]
+   QQQ - 5D: +0.51% | 15D: -0.85%
+   Found 65 ETFs
+   Processing 1/50: SLV   Processing 2/50: GDX   Processing 3/50: GLD   Processing 4/50: IAU   Processing 5/50: AGQ   Processing 6/50: SILJ   Processing 7/50: GLDM   Processing 8/50: UGL   Processing 9/50: SIL   Processing 10/50: COPX   Processing 11/50: SIVR   Processing 12/50: GDXJ   Processing 13/50: BITI   Processing 14/50: IAUM   Processing 15/50: SGOL   Processing 16/50: SBIT   Processing 17/50: REMX   Processing 18/50: ETHD   Processing 19/50: SHNY   Processing 20/50: GDXU   Processing 21/50: NUGT   Processing 22/50: PPLT   Processing 23/50: SLVP   Processing 24/50: OUNZ   Processing 25/50: PLTM   Processing 26/50: AAAU   Processing 27/50: OILU   Processing 28/50: ERX   Processing 29/50: SLVR   Processing 30/50: JNUG   Processing 31/50: CPXR   Processing 32/50: RING   Processing 33/50: ICOP   Processing 34/50: LIT   Processing 35/50: BAR   Processing 36/50: OIH   Processing 37/50: PICK   Processing 38/50: IEZ   Processing 39/50: GBUG   Processing 40/50: EPU   Processing 41/50: FGDL   Processing 42/50: DIG   Processing 43/50: KDEF   Processing 44/50: GLTR   Processing 45/50: SETH   Processing 46/50: LMTL   Processing 47/50: XOMX   Processing 48/50: NIKL   Processing 49/50: SLJY   Processing 50/50: DMAT
+   14 passed filters
+
+[STOCK SCREENER]
+   SOXL - 5D: -6.56% | 15D: -0.34%
+   Found 195 stocks
+   Processing 1/100: SLV   Processing 2/100: AAOI   Processing 3/100: FIGS   Processing 4/100: AG   Processing 5/100: CDE   Processing 6/100: RNA   Processing 7/100: HL   Processing 8/100: PSLV   Processing 9/100: VTYX   Processing 10/100: GDX   Processing 11/100: GLD   Processing 12/100: GLW   Processing 13/100: B   Processing 14/100: IAU   Processing 15/100: AGQ   Processing 16/100: AXTI   Processing 17/100: NGD   Processing 18/100: VALE   Processing 19/100: CFLT   Processing 20/100: SILJ   Processing 21/100: FRO   Processing 22/100: ALM   Processing 23/100: SBSW   Processing 24/100: NEM   Processing 25/100: GLDM   Processing 26/100: UGL   Processing 27/100: SIL   Processing 28/100: COHR   Processing 29/100: KGC   Processing 30/100: EQX   Processing 31/100: LITE   Processing 32/100: PAAS   Processing 33/100: COPX   Processing 34/100: DHT   Processing 35/100: SIVR   Processing 36/100: IAG   Processing 37/100: HAL   Processing 38/100: BITI   Processing 39/100: GDXJ   Processing 40/100: MRNA   Processing 41/100: IAUM   Processing 42/100: SGOL   Processing 43/100: SBIT   Processing 44/100: AGI   Processing 45/100: ACLX   Processing 46/100: PHYS   Processing 47/100: BNAI   Processing 48/100: REMX   Processing 49/100: HBM   Processing 50/100: RIO   Processing 51/100: ETHD   Processing 52/100: SHNY   Processing 53/100: CMBT   Processing 54/100: BVN   Processing 55/100: CIEN   Processing 56/100: PPTA   Processing 57/100: GDXU   Processing 58/100: SPPP   Processing 59/100: DFTX   Processing 60/100: AEM   Processing 61/100: WPM   Processing 62/100: NUGT   Processing 63/100: TSEM   Processing 64/100: NEXA   Processing 65/100: INTT   Processing 66/100: ORLA   Processing 67/100: TIGO   Processing 68/100: FTAI   Processing 69/100: SCCO   Processing 70/100: BDSX   Processing 71/100: BKD   Processing 72/100: PPLT   Processing 73/100: OUNZ   Processing 74/100: SLVP   Processing 75/100: PLTM   Processing 76/100: SCZM   Processing 77/100: CGAU   Processing 78/100: RVMD   Processing 79/100: EGO   Processing 80/100: FDX   Processing 81/100: AAAU   Processing 82/100: NOV   Processing 83/100: OILU   Processing 84/100: ACMR   Processing 85/100: ARIS   Processing 86/100: ERX   Processing 87/100: ERO   Processing 88/100: HLF   Processing 89/100: CGEM   Processing 90/100: PUMP   Processing 91/100: NESR   Processing 92/100: USAU   Processing 93/100: TK   Processing 94/100: SLVR   Processing 95/100: TNK   Processing 96/100: ARWR   Processing 97/100: XPO   Processing 98/100: GOLD   Processing 99/100: INSW   Processing 100/100: DBVT
+   59 passed filters
+
+[SAVING HISTORY]
+   Saved history: /home/admin/stock/history/2026-02-27.json
+   Loaded 1 days stock history, 1 days ETF history
+
+[GENERATING HTML]
+   Saved to: /home/admin/stock/index.html
+
+[PUSHING TO GITHUB]
+   Pushed to GitHub
+
+[DONE]
+Running 11pm HKT scan (no history)...
+/home/admin/stock/run_all.py:463: SyntaxWarning: "\ " is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\ "? A raw string is also an option.
+  os.system('cd /tmp/rocket && git commit -m "Update $(date +%Y-%m-%d\ %H:%M)" 2>/dev/null || true')
+[main c4d26b1] Update 2026-02-28 15:00
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+Push skipped
+============================================================
+  RUNNING ALL SCREENERS
+============================================================
+
+[MARKET ANALYSIS]
+
+[ETF SCREENER]
+   QQQ - 5D: +0.98% | 15D: -0.39%
+   Found 77 ETFs
+   Processing 1/50: SLV   Processing 2/50: GDX   Processing 3/50: EWY   Processing 4/50: GLD   Processing 5/50: IAU   Processing 6/50: SILJ   Processing 7/50: AGQ   Processing 8/50: GLDM   Processing 9/50: COPX   Processing 10/50: SIL   Processing 11/50: UGL   Processing 12/50: IAUM   Processing 13/50: GDXJ   Processing 14/50: SGOL   Processing 15/50: SIVR   Processing 16/50: BITI   Processing 17/50: AAAU   Processing 18/50: SBIT   Processing 19/50: REMX   Processing 20/50: OUNZ   Processing 21/50: SHNY   Processing 22/50: IEZ   Processing 23/50: SLVP   Processing 24/50: GDXU   Processing 25/50: INTW   Processing 26/50: NUGT   Processing 27/50: PLTM   Processing 28/50: FLKR   Processing 29/50: PPLT   Processing 30/50: SLVR   Processing 31/50: RING   Processing 32/50: ETHD   Processing 33/50: OIH   Processing 34/50: OILU   Processing 35/50: KORU   Processing 36/50: ERX   Processing 37/50: PICK   Processing 38/50: SETM   Processing 39/50: BAR   Processing 40/50: XES   Processing 41/50: JNUG   Processing 42/50: NIKL   Processing 43/50: ICOP   Processing 44/50: DFEN   Processing 45/50: COPJ   Processing 46/50: EPU   Processing 47/50: GBUG   Processing 48/50: GLTR   Processing 49/50: WTIU   Processing 50/50: KDEF
+   18 passed filters
+
+[STOCK SCREENER]
+   SOXL - 5D: -4.69% | 15D: +1.65%
+   Found 200 stocks
+   Processing 1/100: INTC   Processing 2/100: SLV   Processing 3/100: FIGS   Processing 4/100: AAOI   Processing 5/100: HL   Processing 6/100: AG   Processing 7/100: CDE   Processing 8/100: GDX   Processing 9/100: PSLV   Processing 10/100: EWY   Processing 11/100: GLD   Processing 12/100: COHR   Processing 13/100: NEM   Processing 14/100: B   Processing 15/100: GLW   Processing 16/100: HBM   Processing 17/100: NGD   Processing 18/100: KGC   Processing 19/100: CFLT   Processing 20/100: HAL   Processing 21/100: FSLY   Processing 22/100: IAU   Processing 23/100: MRNA   Processing 24/100: TEVA   Processing 25/100: LITE   Processing 26/100: AXTI   Processing 27/100: RLAY   Processing 28/100: SILJ   Processing 29/100: RNA   Processing 30/100: IAG   Processing 31/100: SATS   Processing 32/100: EQX   Processing 33/100: UCTT   Processing 34/100: FRO   Processing 35/100: DHT   Processing 36/100: AGQ   Processing 37/100: NXE   Processing 38/100: PAAS   Processing 39/100: NG   Processing 40/100: ERAS   Processing 41/100: ASX   Processing 42/100: SBSW   Processing 43/100: SVM   Processing 44/100: HYMC   Processing 45/100: GLDM   Processing 46/100: ALM   Processing 47/100: FSM   Processing 48/100: BKD   Processing 49/100: COPX   Processing 50/100: SIL   Processing 51/100: UMC   Processing 52/100: UGL   Processing 53/100: ROIV   Processing 54/100: AGI   Processing 55/100: TERN   Processing 56/100: HMY   Processing 57/100: PHYS   Processing 58/100: IAUM   Processing 59/100: TXG   Processing 60/100: GDXJ   Processing 61/100: LBRT   Processing 62/100: PUMP   Processing 63/100: DOCN   Processing 64/100: NE   Processing 65/100: SGOL   Processing 66/100: SIVR   Processing 67/100: BVN   Processing 68/100: BNAI   Processing 69/100: FOLD   Processing 70/100: CIEN   Processing 71/100: NOV   Processing 72/100: KEYS   Processing 73/100: ENTG   Processing 74/100: TIGO   Processing 75/100: CMBT   Processing 76/100: SSRM   Processing 77/100: OUT   Processing 78/100: AU   Processing 79/100: AEM   Processing 80/100: GFI   Processing 81/100: EHAB   Processing 82/100: PPTA   Processing 83/100: RIO   Processing 84/100: KMT   Processing 85/100: CGAU   Processing 86/100: CCJ   Processing 87/100: ATI   Processing 88/100: DFTX   Processing 89/100: SCCO   Processing 90/100: MTZ   Processing 91/100: IE   Processing 92/100: BITI   Processing 93/100: DAR   Processing 94/100: AAAU   Processing 95/100: FORM   Processing 96/100: EGO   Processing 97/100: WPM   Processing 98/100: ORLA   Processing 99/100: XPO   Processing 100/100: HP
+   75 passed filters
+   Loaded 2 days stock history, 2 days ETF history
+
+[GENERATING HTML]
+   Saved to: /home/admin/stock/index.html
+
+[PUSHING TO GITHUB]
+   Pushed to GitHub
+
+[DONE]
+Running 7am HKT scan (with history)...
+/home/admin/stock/run_all.py:463: SyntaxWarning: "\ " is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\ "? A raw string is also an option.
+  os.system('cd /tmp/rocket && git commit -m "Update $(date +%Y-%m-%d\ %H:%M)" 2>/dev/null || true')
+[main 119c101] Update 2026-02-28 23:00
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Push skipped
+============================================================
+  RUNNING ALL SCREENERS
+============================================================
+
+[MARKET ANALYSIS]
+
+[ETF SCREENER]
+   QQQ - 5D: +0.98% | 15D: -0.39%
+   Found 77 ETFs
+   Processing 1/50: SLV   Processing 2/50: GDX   Processing 3/50: EWY   Processing 4/50: GLD   Processing 5/50: IAU   Processing 6/50: SILJ   Processing 7/50: AGQ   Processing 8/50: GLDM   Processing 9/50: COPX   Processing 10/50: SIL   Processing 11/50: UGL   Processing 12/50: IAUM   Processing 13/50: GDXJ   Processing 14/50: SGOL   Processing 15/50: SIVR   Processing 16/50: BITI   Processing 17/50: AAAU   Processing 18/50: SBIT   Processing 19/50: REMX   Processing 20/50: OUNZ   Processing 21/50: SHNY   Processing 22/50: IEZ   Processing 23/50: SLVP   Processing 24/50: GDXU   Processing 25/50: INTW   Processing 26/50: NUGT   Processing 27/50: PLTM   Processing 28/50: FLKR   Processing 29/50: PPLT   Processing 30/50: SLVR   Processing 31/50: RING   Processing 32/50: ETHD   Processing 33/50: OIH   Processing 34/50: OILU   Processing 35/50: KORU   Processing 36/50: ERX   Processing 37/50: PICK   Processing 38/50: SETM   Processing 39/50: BAR   Processing 40/50: XES   Processing 41/50: JNUG   Processing 42/50: NIKL   Processing 43/50: ICOP   Processing 44/50: DFEN   Processing 45/50: COPJ   Processing 46/50: EPU   Processing 47/50: GBUG   Processing 48/50: GLTR   Processing 49/50: WTIU   Processing 50/50: KDEF
+   18 passed filters
+
+[STOCK SCREENER]
+   SOXL - 5D: -4.69% | 15D: +1.65%
+   Found 200 stocks
+   Processing 1/100: INTC   Processing 2/100: SLV   Processing 3/100: FIGS   Processing 4/100: AAOI   Processing 5/100: HL   Processing 6/100: AG   Processing 7/100: CDE   Processing 8/100: GDX   Processing 9/100: PSLV   Processing 10/100: EWY   Processing 11/100: GLD   Processing 12/100: COHR   Processing 13/100: NEM   Processing 14/100: B   Processing 15/100: GLW   Processing 16/100: HBM   Processing 17/100: NGD   Processing 18/100: KGC   Processing 19/100: CFLT   Processing 20/100: HAL   Processing 21/100: FSLY   Processing 22/100: IAU   Processing 23/100: MRNA   Processing 24/100: TEVA   Processing 25/100: LITE   Processing 26/100: AXTI   Processing 27/100: RLAY   Processing 28/100: SILJ   Processing 29/100: RNA   Processing 30/100: IAG   Processing 31/100: SATS   Processing 32/100: EQX   Processing 33/100: UCTT   Processing 34/100: FRO   Processing 35/100: DHT   Processing 36/100: AGQ   Processing 37/100: NXE   Processing 38/100: PAAS   Processing 39/100: NG   Processing 40/100: ERAS   Processing 41/100: ASX   Processing 42/100: SBSW   Processing 43/100: SVM   Processing 44/100: HYMC   Processing 45/100: GLDM   Processing 46/100: ALM   Processing 47/100: FSM   Processing 48/100: BKD   Processing 49/100: COPX   Processing 50/100: SIL   Processing 51/100: UMC   Processing 52/100: UGL   Processing 53/100: ROIV   Processing 54/100: AGI   Processing 55/100: TERN   Processing 56/100: HMY   Processing 57/100: PHYS   Processing 58/100: IAUM   Processing 59/100: TXG   Processing 60/100: GDXJ   Processing 61/100: LBRT   Processing 62/100: PUMP   Processing 63/100: DOCN   Processing 64/100: NE   Processing 65/100: SGOL   Processing 66/100: SIVR   Processing 67/100: BVN   Processing 68/100: BNAI   Processing 69/100: FOLD   Processing 70/100: CIEN   Processing 71/100: NOV   Processing 72/100: KEYS   Processing 73/100: ENTG   Processing 74/100: TIGO   Processing 75/100: CMBT   Processing 76/100: SSRM   Processing 77/100: OUT   Processing 78/100: AU   Processing 79/100: AEM   Processing 80/100: GFI   Processing 81/100: EHAB   Processing 82/100: PPTA   Processing 83/100: RIO   Processing 84/100: KMT   Processing 85/100: CGAU   Processing 86/100: CCJ   Processing 87/100: ATI   Processing 88/100: DFTX   Processing 89/100: SCCO   Processing 90/100: MTZ   Processing 91/100: IE   Processing 92/100: BITI   Processing 93/100: DAR   Processing 94/100: AAAU   Processing 95/100: FORM   Processing 96/100: EGO   Processing 97/100: WPM   Processing 98/100: ORLA   Processing 99/100: XPO   Processing 100/100: HP
+   75 passed filters
+
+[SAVING HISTORY]
+   Saved history: /home/admin/stock/history/2026-02-28.json
+   Loaded 2 days stock history, 2 days ETF history
+
+[GENERATING HTML]
+   Saved to: /home/admin/stock/index.html
+
+[PUSHING TO GITHUB]
+   Pushed to GitHub
+
+[DONE]
+Running 11pm HKT scan (no history)...
+/home/admin/stock/run_all.py:463: SyntaxWarning: "\ " is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\ "? A raw string is also an option.
+  os.system('cd /tmp/rocket && git commit -m "Update $(date +%Y-%m-%d\ %H:%M)" 2>/dev/null || true')
+[main b2fce58] Update 2026-03-01 15:00
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Push skipped
+============================================================
+  RUNNING ALL SCREENERS
+============================================================
+
+[MARKET ANALYSIS]
+
+[ETF SCREENER]
+   QQQ - 5D: +0.98% | 15D: -0.39%
+   Found 77 ETFs
+   Processing 1/50: SLV   Processing 2/50: GDX   Processing 3/50: EWY   Processing 4/50: GLD   Processing 5/50: IAU   Processing 6/50: SILJ   Processing 7/50: AGQ   Processing 8/50: GLDM   Processing 9/50: COPX   Processing 10/50: SIL   Processing 11/50: UGL   Processing 12/50: IAUM   Processing 13/50: GDXJ   Processing 14/50: SGOL   Processing 15/50: SIVR   Processing 16/50: BITI   Processing 17/50: AAAU   Processing 18/50: SBIT   Processing 19/50: REMX   Processing 20/50: OUNZ   Processing 21/50: SHNY   Processing 22/50: IEZ   Processing 23/50: SLVP   Processing 24/50: GDXU   Processing 25/50: INTW   Processing 26/50: NUGT   Processing 27/50: PLTM   Processing 28/50: FLKR   Processing 29/50: PPLT   Processing 30/50: SLVR   Processing 31/50: RING   Processing 32/50: ETHD   Processing 33/50: OIH   Processing 34/50: OILU   Processing 35/50: KORU   Processing 36/50: ERX   Processing 37/50: PICK   Processing 38/50: SETM   Processing 39/50: BAR   Processing 40/50: XES   Processing 41/50: JNUG   Processing 42/50: NIKL   Processing 43/50: ICOP   Processing 44/50: DFEN   Processing 45/50: COPJ   Processing 46/50: EPU   Processing 47/50: GBUG   Processing 48/50: GLTR   Processing 49/50: WTIU   Processing 50/50: KDEF
+   18 passed filters
+
+[STOCK SCREENER]
+   SOXL - 5D: -4.69% | 15D: +1.65%
+   Found 200 stocks
+   Processing 1/100: INTC   Processing 2/100: SLV   Processing 3/100: FIGS   Processing 4/100: AAOI   Processing 5/100: HL   Processing 6/100: AG   Processing 7/100: CDE   Processing 8/100: GDX   Processing 9/100: PSLV   Processing 10/100: EWY   Processing 11/100: GLD   Processing 12/100: COHR   Processing 13/100: NEM   Processing 14/100: B   Processing 15/100: GLW   Processing 16/100: HBM   Processing 17/100: NGD   Processing 18/100: KGC   Processing 19/100: CFLT   Processing 20/100: HAL   Processing 21/100: FSLY   Processing 22/100: IAU   Processing 23/100: MRNA   Processing 24/100: TEVA   Processing 25/100: LITE   Processing 26/100: AXTI   Processing 27/100: RLAY   Processing 28/100: SILJ   Processing 29/100: RNA   Processing 30/100: IAG   Processing 31/100: SATS   Processing 32/100: EQX   Processing 33/100: UCTT   Processing 34/100: FRO   Processing 35/100: DHT   Processing 36/100: AGQ   Processing 37/100: NXE   Processing 38/100: PAAS   Processing 39/100: NG   Processing 40/100: ERAS   Processing 41/100: ASX   Processing 42/100: SBSW   Processing 43/100: SVM   Processing 44/100: HYMC   Processing 45/100: GLDM   Processing 46/100: ALM   Processing 47/100: FSM   Processing 48/100: BKD   Processing 49/100: COPX   Processing 50/100: SIL   Processing 51/100: UMC   Processing 52/100: UGL   Processing 53/100: ROIV   Processing 54/100: AGI   Processing 55/100: TERN   Processing 56/100: HMY   Processing 57/100: PHYS   Processing 58/100: IAUM   Processing 59/100: TXG   Processing 60/100: GDXJ   Processing 61/100: LBRT   Processing 62/100: PUMP   Processing 63/100: DOCN   Processing 64/100: NE   Processing 65/100: SGOL   Processing 66/100: SIVR   Processing 67/100: BVN   Processing 68/100: BNAI   Processing 69/100: FOLD   Processing 70/100: CIEN   Processing 71/100: NOV   Processing 72/100: KEYS   Processing 73/100: ENTG   Processing 74/100: TIGO   Processing 75/100: CMBT   Processing 76/100: SSRM   Processing 77/100: OUT   Processing 78/100: AU   Processing 79/100: AEM   Processing 80/100: GFI   Processing 81/100: EHAB   Processing 82/100: PPTA   Processing 83/100: RIO   Processing 84/100: KMT   Processing 85/100: CGAU   Processing 86/100: CCJ   Processing 87/100: ATI   Processing 88/100: DFTX   Processing 89/100: SCCO   Processing 90/100: MTZ   Processing 91/100: IE   Processing 92/100: BITI   Processing 93/100: DAR   Processing 94/100: AAAU   Processing 95/100: FORM   Processing 96/100: EGO   Processing 97/100: WPM   Processing 98/100: ORLA   Processing 99/100: XPO   Processing 100/100: HP
+   75 passed filters
+   Loaded 2 days stock history, 2 days ETF history
+
+[GENERATING HTML]
+   Saved to: /home/admin/stock/index.html
+
+[PUSHING TO GITHUB]
+   Pushed to GitHub
+
+[DONE]
+Running 7am HKT scan (with history)...
+/home/admin/stock/run_all.py:463: SyntaxWarning: "\ " is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\ "? A raw string is also an option.
+  os.system('cd /tmp/rocket && git commit -m "Update $(date +%Y-%m-%d\ %H:%M)" 2>/dev/null || true')
+[main 074fea0] Update 2026-03-01 23:00
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+Push skipped
+============================================================
+  RUNNING ALL SCREENERS
+============================================================
+
+[MARKET ANALYSIS]
+
+[ETF SCREENER]
+   QQQ - 5D: +0.98% | 15D: -0.39%
+   Found 77 ETFs
+   Processing 1/50: SLV   Processing 2/50: GDX   Processing 3/50: EWY   Processing 4/50: GLD   Processing 5/50: IAU   Processing 6/50: SILJ   Processing 7/50: AGQ   Processing 8/50: GLDM   Processing 9/50: COPX   Processing 10/50: SIL   Processing 11/50: UGL   Processing 12/50: IAUM   Processing 13/50: GDXJ   Processing 14/50: SGOL   Processing 15/50: SIVR   Processing 16/50: BITI   Processing 17/50: AAAU   Processing 18/50: SBIT   Processing 19/50: REMX   Processing 20/50: OUNZ   Processing 21/50: SHNY   Processing 22/50: IEZ   Processing 23/50: SLVP   Processing 24/50: GDXU   Processing 25/50: INTW   Processing 26/50: NUGT   Processing 27/50: PLTM   Processing 28/50: FLKR   Processing 29/50: PPLT   Processing 30/50: SLVR   Processing 31/50: RING   Processing 32/50: ETHD   Processing 33/50: OIH   Processing 34/50: OILU   Processing 35/50: KORU   Processing 36/50: ERX   Processing 37/50: PICK   Processing 38/50: SETM   Processing 39/50: BAR   Processing 40/50: XES   Processing 41/50: JNUG   Processing 42/50: NIKL   Processing 43/50: ICOP   Processing 44/50: DFEN   Processing 45/50: COPJ   Processing 46/50: EPU   Processing 47/50: GBUG   Processing 48/50: GLTR   Processing 49/50: WTIU   Processing 50/50: KDEF
+   18 passed filters
+
+[STOCK SCREENER]
+   SOXL - 5D: -4.69% | 15D: +1.65%
+   Found 200 stocks
+   Processing 1/100: INTC   Processing 2/100: SLV   Processing 3/100: FIGS   Processing 4/100: AAOI   Processing 5/100: HL   Processing 6/100: AG   Processing 7/100: CDE   Processing 8/100: GDX   Processing 9/100: PSLV   Processing 10/100: EWY   Processing 11/100: GLD   Processing 12/100: COHR   Processing 13/100: NEM   Processing 14/100: B   Processing 15/100: GLW   Processing 16/100: HBM   Processing 17/100: NGD   Processing 18/100: KGC   Processing 19/100: CFLT   Processing 20/100: HAL   Processing 21/100: FSLY   Processing 22/100: IAU   Processing 23/100: MRNA   Processing 24/100: TEVA   Processing 25/100: LITE   Processing 26/100: AXTI   Processing 27/100: RLAY   Processing 28/100: SILJ   Processing 29/100: RNA   Processing 30/100: IAG   Processing 31/100: SATS   Processing 32/100: EQX   Processing 33/100: UCTT   Processing 34/100: FRO   Processing 35/100: DHT   Processing 36/100: AGQ   Processing 37/100: NXE   Processing 38/100: PAAS   Processing 39/100: NG   Processing 40/100: ERAS   Processing 41/100: ASX   Processing 42/100: SBSW   Processing 43/100: SVM   Processing 44/100: HYMC   Processing 45/100: GLDM   Processing 46/100: ALM   Processing 47/100: FSM   Processing 48/100: BKD   Processing 49/100: COPX   Processing 50/100: SIL   Processing 51/100: UMC   Processing 52/100: UGL   Processing 53/100: ROIV   Processing 54/100: AGI   Processing 55/100: TERN   Processing 56/100: HMY   Processing 57/100: PHYS   Processing 58/100: IAUM   Processing 59/100: TXG   Processing 60/100: GDXJ   Processing 61/100: LBRT   Processing 62/100: PUMP   Processing 63/100: DOCN   Processing 64/100: NE   Processing 65/100: SGOL   Processing 66/100: SIVR   Processing 67/100: BVN   Processing 68/100: BNAI   Processing 69/100: FOLD   Processing 70/100: CIEN   Processing 71/100: NOV   Processing 72/100: KEYS   Processing 73/100: ENTG   Processing 74/100: TIGO   Processing 75/100: CMBT   Processing 76/100: SSRM   Processing 77/100: OUT   Processing 78/100: AU   Processing 79/100: AEM   Processing 80/100: GFI   Processing 81/100: EHAB   Processing 82/100: PPTA   Processing 83/100: RIO   Processing 84/100: KMT   Processing 85/100: CGAU   Processing 86/100: CCJ   Processing 87/100: ATI   Processing 88/100: DFTX   Processing 89/100: SCCO   Processing 90/100: MTZ   Processing 91/100: IE   Processing 92/100: BITI   Processing 93/100: DAR   Processing 94/100: AAAU   Processing 95/100: FORM   Processing 96/100: EGO   Processing 97/100: WPM   Processing 98/100: ORLA   Processing 99/100: XPO   Processing 100/100: HP
+   75 passed filters
+
+[SAVING HISTORY]
+   Saved history: /home/admin/stock/history/2026-03-01.json
+   Loaded 3 days stock history, 3 days ETF history
+
+[GENERATING HTML]
+   Saved to: /home/admin/stock/index.html
+
+[PUSHING TO GITHUB]
+   Pushed to GitHub
+
+[DONE]
+Running 11pm HKT scan (no history)...
+/home/admin/stock/run_all.py:463: SyntaxWarning: "\ " is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\ "? A raw string is also an option.
+  os.system('cd /tmp/rocket && git commit -m "Update $(date +%Y-%m-%d\ %H:%M)" 2>/dev/null || true')
+[main b142ef6] Update 2026-03-02 15:00
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Push skipped
+============================================================
+  RUNNING ALL SCREENERS
+============================================================
+
+[MARKET ANALYSIS]
+
+[ETF SCREENER]
+   QQQ - 5D: +0.98% | 15D: -0.39%
+   Found 77 ETFs
+   Processing 1/50: SLV   Processing 2/50: GDX   Processing 3/50: EWY   Processing 4/50: GLD   Processing 5/50: IAU   Processing 6/50: SILJ   Processing 7/50: AGQ   Processing 8/50: GLDM   Processing 9/50: COPX   Processing 10/50: SIL   Processing 11/50: UGL   Processing 12/50: IAUM   Processing 13/50: GDXJ   Processing 14/50: SGOL   Processing 15/50: SIVR   Processing 16/50: BITI   Processing 17/50: AAAU   Processing 18/50: SBIT   Processing 19/50: REMX   Processing 20/50: OUNZ   Processing 21/50: SHNY   Processing 22/50: IEZ   Processing 23/50: SLVP   Processing 24/50: GDXU   Processing 25/50: INTW   Processing 26/50: NUGT   Processing 27/50: PLTM   Processing 28/50: FLKR   Processing 29/50: PPLT   Processing 30/50: SLVR   Processing 31/50: RING   Processing 32/50: ETHD   Processing 33/50: OIH   Processing 34/50: OILU   Processing 35/50: KORU   Processing 36/50: ERX   Processing 37/50: PICK   Processing 38/50: SETM   Processing 39/50: BAR   Processing 40/50: XES   Processing 41/50: JNUG   Processing 42/50: NIKL   Processing 43/50: ICOP   Processing 44/50: DFEN   Processing 45/50: COPJ   Processing 46/50: EPU   Processing 47/50: GBUG   Processing 48/50: GLTR   Processing 49/50: WTIU   Processing 50/50: KDEF
+   18 passed filters
+
+[STOCK SCREENER]
+   SOXL - 5D: -4.69% | 15D: +1.65%
+   Found 200 stocks
+   Processing 1/100: INTC   Processing 2/100: SLV   Processing 3/100: FIGS   Processing 4/100: AAOI   Processing 5/100: HL   Processing 6/100: AG   Processing 7/100: CDE   Processing 8/100: GDX   Processing 9/100: PSLV   Processing 10/100: EWY   Processing 11/100: GLD   Processing 12/100: COHR   Processing 13/100: NEM   Processing 14/100: B   Processing 15/100: GLW   Processing 16/100: HBM   Processing 17/100: NGD   Processing 18/100: KGC   Processing 19/100: CFLT   Processing 20/100: HAL   Processing 21/100: FSLY   Processing 22/100: IAU   Processing 23/100: MRNA   Processing 24/100: TEVA   Processing 25/100: LITE   Processing 26/100: AXTI   Processing 27/100: RLAY   Processing 28/100: SILJ   Processing 29/100: RNA   Processing 30/100: IAG   Processing 31/100: SATS   Processing 32/100: EQX   Processing 33/100: UCTT   Processing 34/100: FRO   Processing 35/100: DHT   Processing 36/100: AGQ   Processing 37/100: NXE   Processing 38/100: PAAS   Processing 39/100: NG   Processing 40/100: ERAS   Processing 41/100: ASX   Processing 42/100: SBSW   Processing 43/100: SVM   Processing 44/100: HYMC   Processing 45/100: GLDM   Processing 46/100: ALM   Processing 47/100: FSM   Processing 48/100: BKD   Processing 49/100: COPX   Processing 50/100: SIL   Processing 51/100: UMC   Processing 52/100: UGL   Processing 53/100: ROIV   Processing 54/100: AGI   Processing 55/100: TERN   Processing 56/100: HMY   Processing 57/100: PHYS   Processing 58/100: IAUM   Processing 59/100: TXG   Processing 60/100: GDXJ   Processing 61/100: LBRT   Processing 62/100: PUMP   Processing 63/100: DOCN   Processing 64/100: NE   Processing 65/100: SGOL   Processing 66/100: SIVR   Processing 67/100: BVN   Processing 68/100: BNAI   Processing 69/100: FOLD   Processing 70/100: CIEN   Processing 71/100: NOV   Processing 72/100: KEYS   Processing 73/100: ENTG   Processing 74/100: TIGO   Processing 75/100: CMBT   Processing 76/100: SSRM   Processing 77/100: OUT   Processing 78/100: AU   Processing 79/100: AEM   Processing 80/100: GFI   Processing 81/100: EHAB   Processing 82/100: PPTA   Processing 83/100: RIO   Processing 84/100: KMT   Processing 85/100: CGAU   Processing 86/100: CCJ   Processing 87/100: ATI   Processing 88/100: DFTX   Processing 89/100: SCCO   Processing 90/100: MTZ   Processing 91/100: IE   Processing 92/100: BITI   Processing 93/100: DAR   Processing 94/100: AAAU   Processing 95/100: FORM   Processing 96/100: EGO   Processing 97/100: WPM   Processing 98/100: ORLA   Processing 99/100: XPO   Processing 100/100: HP
+   75 passed filters
+   Loaded 3 days stock history, 3 days ETF history
+
+[GENERATING HTML]
+   Saved to: /home/admin/stock/index.html
+
+[PUSHING TO GITHUB]
+   Pushed to GitHub
+
+[DONE]
+Running 7am HKT scan (with history)...
+/home/admin/stock/run_all.py:463: SyntaxWarning: "\ " is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\ "? A raw string is also an option.
+  os.system('cd /tmp/rocket && git commit -m "Update $(date +%Y-%m-%d\ %H:%M)" 2>/dev/null || true')
+[main 60dc1ec] Update 2026-03-02 23:00
+ 1 file changed, 13 insertions(+), 13 deletions(-)
+Push skipped
+============================================================
+  RUNNING ALL SCREENERS
+============================================================
+
+[MARKET ANALYSIS]
+
+[ETF SCREENER]
+   QQQ - 5D: -0.65% | 15D: -1.69%
+   Found 33 ETFs
+   Processing 1/33: GDX   Processing 2/33: GLD   Processing 3/33: IAU   Processing 4/33: UGL   Processing 5/33: GLDM   Processing 6/33: IAUM   Processing 7/33: SGOL   Processing 8/33: SHNY   Processing 9/33: AAAU   Processing 10/33: OILU   Processing 11/33: ERX   Processing 12/33: NRGU   Processing 13/33: DFEN   Processing 14/33: WTIU   Processing 15/33: REMX   Processing 16/33: XOMX   Processing 17/33: OUNZ   Processing 18/33: BAR   Processing 19/33: KDEF   Processing 20/33: DIG   Processing 21/33: BDRY   Processing 22/33: LMTL   Processing 23/33: URNJ   Processing 24/33: BWET   Processing 25/33: GDMN   Processing 26/33: SGDM   Processing 27/33: FGDL   Processing 28/33: DGP   Processing 29/33: GOAU   Processing 30/33: GOEX   Processing 31/33: YGLD   Processing 32/33: DBP   Processing 33/33: AUMI
+   11 passed filters
+
+[STOCK SCREENER]
+   SOXL - 5D: -11.95% | 15D: -5.76%
+   Found 143 stocks
+   Processing 1/100: ONDS   Processing 2/100: BATL   Processing 3/100: AAOI   Processing 4/100: RCAT   Processing 5/100: IBRX   Processing 6/100: GDX   Processing 7/100: GLD   Processing 8/100: IAU   Processing 9/100: AXTI   Processing 10/100: FRO   Processing 11/100: GLW   Processing 12/100: COHR   Processing 13/100: FSLY   Processing 14/100: ALM   Processing 15/100: UGL   Processing 16/100: NEM   Processing 17/100: ASTS   Processing 18/100: LITE   Processing 19/100: KGC   Processing 20/100: AA   Processing 21/100: GLDM   Processing 22/100: CRML   Processing 23/100: UUUU   Processing 24/100: IAUM   Processing 25/100: PL   Processing 26/100: LUNR   Processing 27/100: PHYS   Processing 28/100: HYMC   Processing 29/100: LASR   Processing 30/100: HUT   Processing 31/100: SGOL   Processing 32/100: TEVA   Processing 33/100: VIAV   Processing 34/100: SATS   Processing 35/100: VIST   Processing 36/100: AU   Processing 37/100: LPTH   Processing 38/100: SHNY   Processing 39/100: NG   Processing 40/100: TSEM   Processing 41/100: AEHR   Processing 42/100: AGI   Processing 43/100: KRMN   Processing 44/100: AAAU   Processing 45/100: ECO   Processing 46/100: OILU   Processing 47/100: FIGS   Processing 48/100: ERX   Processing 49/100: NRGU   Processing 50/100: AEM   Processing 51/100: DFEN   Processing 52/100: SCCO   Processing 53/100: CCJ   Processing 54/100: CIEN   Processing 55/100: PUMP   Processing 56/100: GDXU   Processing 57/100: CSTM   Processing 58/100: BTU   Processing 59/100: VELO   Processing 60/100: WTIU   Processing 61/100: NUGT   Processing 62/100: GOLD   Processing 63/100: TTMI   Processing 64/100: CENX   Processing 65/100: ACLX   Processing 66/100: RLAY   Processing 67/100: REMX   Processing 68/100: TEN   Processing 69/100: RFIL   Processing 70/100: XOMX   Processing 71/100: OUNZ   Processing 72/100: MTZ   Processing 73/100: TK   Processing 74/100: NEXA   Processing 75/100: OR   Processing 76/100: BAR   Processing 77/100: GILT   Processing 78/100: ATRO   Processing 79/100: CLMT   Processing 80/100: RGLD   Processing 81/100: RING   Processing 82/100: ONTO   Processing 83/100: AEIS   Processing 84/100: KGS   Processing 85/100: MRAM   Processing 86/100: FN   Processing 87/100: KDEF   Processing 88/100: ISSC   Processing 89/100: FNV   Processing 90/100: AUGO   Processing 91/100: DIG   Processing 92/100: HII   Processing 93/100: BDRY   Processing 94/100: TPL   Processing 95/100: COKE   Processing 96/100: EFXT   Processing 97/100: LMTL   Processing 98/100: MTSI   Processing 99/100: GPCR   Processing 100/100: NVMI
+   57 passed filters
+
+[SAVING HISTORY]
+   Saved history: /home/admin/stock/history/2026-03-02.json
+   Loaded 4 days stock history, 4 days ETF history
+
+[GENERATING HTML]
+   Saved to: /home/admin/stock/index.html
+
+[PUSHING TO GITHUB]
+   Pushed to GitHub
+
+[DONE]
