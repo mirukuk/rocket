@@ -301,22 +301,43 @@ def run_etf_screener():
     tickers = get_etfs(limit=200)
     print(f"   Found {len(tickers)} ETFs")
     
-    # Bulk download all ETF data at once
-    dl_tickers = list(set(tickers[:50]))
+    # Bulk download all ETF data at once — always include SOXL
+    dl_tickers = list(set(tickers[:50]) | {'SOXL'})
     print(f"   Bulk downloading {len(dl_tickers)} ETFs...")
     close_df, volume_df = bulk_download(dl_tickers)
     
     results = []
+    soxl_data = None  # track SOXL separately
     for i, ticker in enumerate(dl_tickers):
         print(f"   Scoring {i+1}/{len(dl_tickers)}: {ticker}     ", end='\r')
         data = process_ticker_from_bulk(ticker, close_df, volume_df, min_bars=15)
+        
+        # Keep SOXL data even if it fails filters
+        if ticker == 'SOXL':
+            if data is not None:
+                data['5D vs QQQ'] = round(data['5D %'] - qqq_perf['perf_5d'], 2)
+                data['15D vs QQQ'] = round(data['15D %'] - qqq_perf['perf_15d'], 2)
+                avg_rel_return = (data['5D vs QQQ'] + data['15D vs QQQ']) / 2
+                data['Avg Rel Return'] = round(avg_rel_return, 2)
+                # Use absolute performance for SOXL score, scaled to match other ETFs
+                avg_abs = (data['5D %'] + data['15D %']) / 2
+                score = avg_abs * (data['Dollar Volume'] / 1_000_000_000)
+                if data['Vol Surge'] > 1.2:
+                    score *= min(data['Vol Surge'], 1.5)
+                score *= 2.0  # leveraged bonus
+                if data['Acceleration']:
+                    score *= 1.3
+                data['Composite Score'] = round(score, 2)
+                enrich_with_info(data, ticker)
+                soxl_data = data
         
         if data is None:
             continue
         if data['Dollar Volume'] < 50000000:
             continue
         if not (data['Above MA20'] and data['Above MA50']):
-            continue
+            if ticker != 'SOXL':
+                continue
         
         data['5D vs QQQ'] = round(data['5D %'] - qqq_perf['perf_5d'], 2)
         data['15D vs QQQ'] = round(data['15D %'] - qqq_perf['perf_15d'], 2)
@@ -341,10 +362,16 @@ def run_etf_screener():
             data['Composite Score'] = round(score, 2)
             
             # Fetch name for display
-            enrich_with_info(data, ticker)
+            if ticker != 'SOXL':  # already enriched above
+                enrich_with_info(data, ticker)
             results.append(data)
     
     print(f"\n   {len(results)} passed filters")
+    
+    # Ensure SOXL is always in results
+    if soxl_data and not any(r['Ticker'] == 'SOXL' for r in results):
+        soxl_data['_reference'] = True  # mark as reference row
+        results.append(soxl_data)
     
     if results:
         df = pd.DataFrame(results).sort_values('Composite Score', ascending=False)
@@ -414,6 +441,48 @@ def get_benchmark_performance(benchmark='QQQ'):
         print(f"Error fetching {benchmark}: {e}")
         return {'perf_3d': 0, 'perf_5d': 0, 'perf_15d': 0, 'ticker': benchmark}
 
+def build_history_score_html(stock_history):
+    """Build an HTML table showing all stocks from history ranked by latest composite score."""
+    if not stock_history or len(stock_history) == 0:
+        return ""
+
+    # Collect all unique stocks from all history days with their latest data
+    stock_map = {}
+    for day in stock_history:
+        for stock in day.get('stocks', []):
+            ticker = stock['Ticker']
+            stock_map[ticker] = stock  # Latest occurrence overwrites
+
+    if not stock_map:
+        return ""
+
+    # Sort by composite score descending
+    sorted_stocks = sorted(stock_map.values(), key=lambda x: x.get('Composite Score', 0), reverse=True)
+
+    # Build rows
+    rows = ""
+    for i, stock in enumerate(sorted_stocks):
+        ticker = stock['Ticker']
+        score = stock.get('Composite Score', 0)
+        name = stock.get('Name', ticker)[:25]
+        vs = stock.get('Vol Surge', 1.0)
+        vs_badge = f"<span style='color:#3fb950;'>&#x2191;{vs:.1f}x</span>" if vs > 1.2 else f"{vs:.1f}x"
+        acc = "&#x1F525;" if stock.get('Acceleration', False) else ""
+
+        # Calculate frequency from history
+        freq = sum(1 for day in stock_history if any(s['Ticker'] == ticker for s in day.get('stocks', [])))
+
+        rows += f"<tr><td>{i+1}</td><td>{ticker}</td><td>{name}</td><td>{score:.2f}</td><td>{vs_badge} {acc}</td><td>{freq}/10</td></tr>"
+
+    return f"""
+        <h2>Stock Score Ranking</h2>
+        <p class="history-info">All stocks from history ranked by latest composite score</p>
+        <table>
+            <thead><tr><th>#</th><th>Ticker</th><th>Name</th><th>Score</th><th>Vol/Acc</th><th>Freq</th></tr></thead>
+            <tbody>{rows}</tbody>
+        </table>
+    """
+
 def generate_html(market, etf_results, etf_bench, stock_results, stock_bench, stock_frequency=None, stock_history=None, etf_frequency=None, etf_history=None):
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
     
@@ -459,7 +528,21 @@ def generate_html(market, etf_results, etf_bench, stock_results, stock_bench, st
         vs_badge = f"<span style='color:#3fb950;'>&#x2191;{vs:.1f}x</span>" if vs > 1.2 else f"{vs:.1f}x"
         acc = "&#x1F525;" if row.get('Acceleration', False) else ""
         lev = "&#x26A1;" if row.get('Ticker', '') in LEVERAGED_ETFS else ""
-        etf_rows += f"<tr><td>{i+1}</td><td>{lev}{row['Ticker']}</td><td>{row.get('Name', row['Ticker'])[:25]}</td><td>{row['Composite Score']:.2f}</td><td>{vs_badge} {acc}</td><td>{freq}/10</td></tr>"
+        is_ref = row.get('_reference', False)
+        ref_style = " style='background:#1c2333;opacity:0.85;'" if is_ref else ""
+        ref_tag = " <span style='color:#8b949e;font-size:0.75rem;'>(ref)</span>" if is_ref else ""
+        etf_rows += f"<tr{ref_style}><td>{i+1}</td><td>{lev}{row['Ticker']}{ref_tag}</td><td>{row.get('Name', row['Ticker'])[:25]}</td><td>{row['Composite Score']:.2f}</td><td>{vs_badge} {acc}</td><td>{freq}/10</td></tr>"
+    
+    # If SOXL is not in top 10, add it as an extra reference row
+    soxl_in_top = any(r['Ticker'] == 'SOXL' for r in etf_results[:10])
+    if not soxl_in_top:
+        soxl_row = next((r for r in etf_results if r['Ticker'] == 'SOXL'), None)
+        if soxl_row:
+            freq = etf_frequency.get('SOXL', 0)
+            vs = soxl_row.get('Vol Surge', 1.0)
+            vs_badge = f"<span style='color:#3fb950;'>&#x2191;{vs:.1f}x</span>" if vs > 1.2 else f"{vs:.1f}x"
+            acc = "&#x1F525;" if soxl_row.get('Acceleration', False) else ""
+            etf_rows += f"<tr style='background:#1c2333;border-top:2px solid #30363d;'><td>&#x2605;</td><td>&#x26A1;SOXL <span style='color:#8b949e;font-size:0.75rem;'>(ref)</span></td><td>{soxl_row.get('Name', 'SOXL')[:25]}</td><td style='color:{'#3fb950' if soxl_row.get('Composite Score', 0) >= 0 else '#f85149'};'>{soxl_row.get('Composite Score', 0):.2f}</td><td>{vs_badge} {acc}</td><td>{freq}/10</td></tr>"
     
     stock_rows = ""
     for i, row in enumerate(stock_results[:15]):
@@ -471,6 +554,9 @@ def generate_html(market, etf_results, etf_bench, stock_results, stock_bench, st
     
     stock_history_days = ", ".join([d['date'] for d in stock_history]) if stock_history else "No history"
     etf_history_days = ", ".join([d['date'] for d in etf_history]) if etf_history else "No history"
+    
+    # Build stock score history table
+    history_score_html = build_history_score_html(stock_history)
     
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -555,6 +641,8 @@ def generate_html(market, etf_results, etf_bench, stock_results, stock_bench, st
             <thead><tr><th>#</th><th>Ticker</th><th>Name</th><th>Score</th><th>Vol/Acc</th><th>Freq</th></tr></thead>
             <tbody>{stock_rows}</tbody>
         </table>
+        
+        {history_score_html}
     </div>
 </body>
 </html>'''
