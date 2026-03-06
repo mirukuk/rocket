@@ -302,49 +302,37 @@ td { font-size:.9rem; } tr:hover { background:#161b22; }
 .hi { color:#58a6ff; font-size:.875rem; margin-bottom:1rem; }"""
 
 
-def _signal(r, freq, rank, total, is_ref=False):
-    """Determine BUY/SELL/HOLD action for a screened ticker."""
+def _action(r, freq, rank, total, is_ref=False):
+    """Single action signal combining score, volume, acceleration, frequency."""
     if is_ref:
-        return 'SELL'
+        return '-', '#8b949e'
     score = r.get('Composite Score', 0)
+    if score <= 0:
+        return 'AVOID', '#f85149'
     vs = r.get('Vol Surge', 1.0)
     acc = r.get('Acceleration', False)
-    if score <= 0:
-        return 'SELL'
-    # Top third + momentum confirmation → BUY
-    top_third = rank <= max(total // 3, 1)
-    has_momentum = vs > 1.2 or acc
-    if top_third and has_momentum and freq >= 2:
-        return 'BUY'
-    if top_third and freq >= 3:
-        return 'BUY'
-    if score > 0 and has_momentum:
-        return 'BUY'
-    return 'HOLD'
-
-
-def _sig_html(sig):
-    colors = {'BUY': '#3fb950', 'SELL': '#f85149', 'HOLD': '#d29922'}
-    return f"<span style='color:{colors[sig]};font-weight:bold'>{sig}</span>"
+    top = rank <= max(total // 3, 1)
+    # Count conviction signals
+    signals = sum([vs > 1.2, acc, freq >= 3, top, score > 200])
+    if signals >= 3:
+        return '&#x1F525; STRONG BUY', '#3fb950'
+    if signals >= 1 and score > 0:
+        return 'BUY', '#3fb950'
+    return 'HOLD', '#d29922'
 
 
 def _row(i, r, freq, total, is_ref=False, is_etf=False):
-    vs = r.get('Vol Surge', 1.0)
-    vs_s = f"<span style='color:#3fb950'>&#x2191;{vs:.1f}x</span>" if vs > 1.2 else f"{vs:.1f}x"
-    acc = "&#x1F525;" if r.get('Acceleration') else ""
     lev = "&#x26A1;" if is_etf and r['Ticker'] in LEVERAGED else ""
     ref = " <span style='color:#8b949e;font-size:.75rem'>(ref)</span>" if is_ref else ""
     sty = " style='background:#1c2333;opacity:.85'" if is_ref else ""
-    sig = _signal(r, freq, i, total, is_ref)
+    label, color = _action(r, freq, i, total, is_ref)
     return (f"<tr{sty}><td>{i}</td><td>{lev}{r['Ticker']}{ref}</td>"
             f"<td>{r.get('Name', r['Ticker'])[:25]}</td>"
-            f"<td>{r.get('Composite Score', 0):.2f}</td>"
-            f"<td>{vs_s} {acc}</td><td>{freq}/{MAX_HISTORY}</td>"
-            f"<td>{_sig_html(sig)}</td></tr>")
+            f"<td><span style='color:{color};font-weight:bold'>{label}</span></td></tr>")
 
 
 def _table(rows_html):
-    hdr = ''.join(f'<th>{h}</th>' for h in ['#', 'Ticker', 'Name', 'Score', 'Vol/Acc', 'Freq', 'Action'])
+    hdr = ''.join(f'<th>{h}</th>' for h in ['#', 'Ticker', 'Name', 'Action'])
     return f"<table><thead><tr>{hdr}</tr></thead><tbody>{rows_html}</tbody></table>"
 
 
