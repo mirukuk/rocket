@@ -1,34 +1,74 @@
-# Stock Screener Files
+# Market Screener
 
-## screener.py
-- `get_us_stocks(limit)` - Fetches stock tickers from Finviz
-- `calc_performance(hist)` - Calculates 5D and 15D performance % 
-- `get_benchmark_performance(benchmark)` - Gets SOXL benchmark performance
-- `get_stock_data(ticker)` - Fetches stock data (price, MA, volume, etc.)
-- `screen_stocks()` - Main screening logic with filters (min $75M volume, above MA20 & MA50)
-- `display_results(df, soxl_perf, top_n)` - Displays results (default top_n=20)
-- `main()` - Entry point
+One file (`run_all.py`) → generates `index.html` dashboard.
 
-## etf_screener.py
-- `get_etfs(limit)` - Fetches ETF tickers from Finviz
-- `calc_performance(hist)` - Calculates 5D and 15D performance %
-- `get_benchmark_performance(benchmark)` - Gets QQQ benchmark performance
-- `get_etf_data(ticker)` - Fetches ETF data
-- `screen_etfs()` - Main ETF screening logic (min $50M volume)
-- `compare_custom_tickers()` - Compares user tickers vs screener results
-- `display_results(df, qqq_perf, top_n)` - Displays results (default top_n=30, display top_n=10)
-- `get_tickers_from_input()` - Gets tickers from CLI args or input
-- `main()` - Entry point (hardcoded custom_tickers=['SOXL'])
+## Strategy
 
-## screener_compare.py
-- Same core functions as screener.py
-- `compare_custom_tickers()` - Compares user tickers vs screener results
-- `get_tickers_from_input()` - Gets tickers from CLI args or interactive input
-- `display_results()` - Displays results (default top_n=30)
-- `main()` - Entry point requiring tickers as CLI argument
+### 1. Market Regime (BUY / SELL gate)
 
-## run_market_analysis.py
-- `get_vix()` - Fetches VIX data with level classification (LOW/NORMAL/ELEVATED/HIGH/EXTREME)
-- `get_fear_greed()` - Fetches CNN Fear & Greed index
-- `get_spy_ma()` - Gets SPY price and 200-day moving average
-- `main()` - Entry point with BUY/SELL signal based on SPY > 200-MA and VIX < 27
+| Check | BUY condition |
+|-------|--------------|
+| SPY vs 200-MA | Price **above** 200-day moving average |
+| VIX | Below **27** |
+| SMH Bounce | Drawdown >15% from 50D high + 5D recovery >2% → **BUY THE DIP** |
+
+Market Score (0-100) adds granularity: VIX < 18 → +15, SPY above 200-MA → +15.
+
+**Rule: Only buy stocks when signal is BUY or BUY THE DIP.**
+
+### 2. Stock Selection (How to find stocks)
+
+Source: Finviz screener — US stocks with:
+- Price > $10
+- 13-week performance > +20%
+- 26-week performance > +50%
+- Sorted by volume (highest first)
+
+Filters applied by the script:
+- **Dollar volume > $75M/day** (liquidity)
+- **Price above MA20 AND MA50** (uptrend confirmed)
+- **5D and 15D return both beat SOXL** (must outperform the benchmark)
+
+### 3. Scoring (How to rank)
+
+```
+Composite Score = Avg Relative Return × (Dollar Volume / $100M)
+                  × Vol Surge bonus (if 5D avg vol > 1.2× 20D avg)
+                  × Leveraged bonus (2× for leveraged ETFs)
+                  × Acceleration bonus (1.3× if 3D > 60% of 5D return)
+```
+
+### 4. How to Buy & Sell
+
+**Entry:**
+- Pick from the top of the Stock Screener table (highest composite score)
+- Prefer stocks with **high frequency** (appear across many days → persistent momentum)
+- Prefer stocks with **Vol Surge ↑** (institutional interest) and **🔥 Acceleration** (momentum accelerating)
+
+**Position sizing:**
+- Concentrate on top 2-3 picks max
+- Use the ETF screener to find the broad sector bet (e.g. ERX for energy, SOXL for semis)
+
+**Exit (sell when):**
+- Stock drops below MA20 → momentum broken
+- Stock no longer beats SOXL benchmark on 5D/15D → relative momentum lost
+- Market signal flips to SELL (VIX spikes or SPY drops below 200-MA)
+- Stock disappears from screener for 2+ consecutive days → momentum faded
+
+### 5. ETF Layer
+
+Same logic but benchmarked against QQQ. SOXL is always shown as reference.
+Use ETFs to identify which **sector** is leading, then pick individual stocks from that sector.
+
+## Usage
+
+```bash
+python run_all.py                # full run, saves history, generates index.html
+python run_all.py --no-save-history  # skip saving daily snapshot
+```
+
+## Files
+
+- `run_all.py` — all logic in one file (market analysis, screener, HTML generation)
+- `index.html` — output dashboard (auto-generated)
+- `history/*.json` — daily snapshots (last 10 trading days)
