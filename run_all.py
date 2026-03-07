@@ -14,13 +14,11 @@ import pandas as pd
 ROOT = os.path.dirname(os.path.abspath(__file__))
 HISTORY_DIR = os.path.join(ROOT, 'history')
 MAX_HISTORY = 10
-LEVERAGED = {'SOXL','TQQQ','NVDL','UPRO','TECL','FAS','LABU','FNGU',
-             'TNA','SPXL','QLD','ROM','BULZ','KORU','YINN','EDC'}
-ETF_URL = "https://finviz.com/screener.ashx?v=411&f=ind_exchangetradedfund%2Csh_price_o10%2Cta_change_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&o=-volume"
-STOCK_URL = "https://finviz.com/screener.ashx?v=411&f=sh_price_o10%2Cta_change_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&ft=3&o=-volume"
+ETF_URL = "https://finviz.com/screener.ashx?v=411&f=ind_exchangetradedfund%2Csh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&o=-volume"
+STOCK_URL = "https://finviz.com/screener.ashx?v=411&f=sh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&ft=3&o=-volume"
 # Extra sources: weekly gainers with volume, new highs, recent breakouts
 STOCK_URL2 = "https://finviz.com/screener.ashx?v=411&f=sh_avgvol_o400%2Csh_price_o10%2Cta_change_u%2Cta_perf_1w10o%2Cta_sma20_pa&ft=3&o=-perf1w"
-STOCK_URL3 = "https://finviz.com/screener.ashx?v=411&f=sh_avgvol_o400%2Csh_price_o10%2Cta_highlow52w_nh%2Cta_sma50_pa&ft=3&o=-perf4w"
+STOCK_URL3 = "https://finviz.com/screener.ashx?v=411&f=sh_avgvol_o400%2Csh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_1w10o%2Cta_sma20_pa&ft=3&o=-perf1w"
 
 # -- Helpers -----------------------------------------------------------
 
@@ -44,21 +42,23 @@ def fetch_finviz(url, limit=200):
 
 def bulk_download(tickers):
     if not tickers:
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     try:
         data = yf.download(tickers, period="3mo", auto_adjust=True, threads=True, progress=False)
         if data.empty:
-            return pd.DataFrame(), pd.DataFrame()
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         if len(tickers) == 1:
             return (data[['Close']].rename(columns={'Close': tickers[0]}),
-                    data[['Volume']].rename(columns={'Volume': tickers[0]}))
-        return (data.get('Close', pd.DataFrame()), data.get('Volume', pd.DataFrame()))
+                    data[['Volume']].rename(columns={'Volume': tickers[0]}),
+                    data[['Open']].rename(columns={'Open': tickers[0]}))
+        return (data.get('Close', pd.DataFrame()), data.get('Volume', pd.DataFrame()),
+                data.get('Open', pd.DataFrame()))
     except Exception as e:
         print(f"   Download error: {e}")
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 
-def score_ticker(ticker, close_df, vol_df, min_bars=15):
+def score_ticker(ticker, close_df, vol_df, open_df, min_bars=15):
     try:
         if ticker not in close_df.columns:
             return None
@@ -83,6 +83,12 @@ def score_ticker(ticker, close_df, vol_df, min_bars=15):
         near_high = (high20 - price) / high20 < 0.02 if high20 > 0 else False
         vs = round(avg5 / avg20, 2) if avg20 > 0 else 1.0
         breakout = near_high and vs > 1.0
+        # Change from open: compare latest close to latest open
+        change_open_up = False
+        if ticker in open_df.columns:
+            opens = open_df[ticker].dropna()
+            if len(opens) > 0:
+                change_open_up = price > float(opens.iloc[-1])
         return {
             'Ticker': ticker, 'Price': round(price, 2),
             '3D %': p3, '5D %': p5, '15D %': p15,
@@ -92,6 +98,7 @@ def score_ticker(ticker, close_df, vol_df, min_bars=15):
             'Acceleration': acc,
             'Breakout': breakout,
             'Near High': near_high,
+            'ChangeOpenUp': change_open_up,
         }
     except Exception:
         return None
@@ -113,7 +120,7 @@ def bench_perf(ticker):
         return {'ticker': ticker, 'perf_5d': 0, 'perf_15d': 0}
 
 
-def calc_composite(d, dv_scale, is_leveraged=False):
+def calc_composite(d, dv_scale):
     import math
     # Momentum: absolute performance matters most
     abs_mom = d['3D %'] * 2 + d['5D %'] * 1.5 + d['15D %'] * 0.5
@@ -133,8 +140,6 @@ def calc_composite(d, dv_scale, is_leveraged=False):
     # Breakout: near 20-day high with volume
     if d.get('Breakout'):
         sc *= 1.3
-    if is_leveraged and sc > 0:
-        sc *= 1.5
     return round(sc, 2)
 
 # -- Market Analysis ---------------------------------------------------
@@ -226,14 +231,14 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
 
     dl = list(set(all_tickers[:dl_limit]) | ({ensure_ticker} if ensure_ticker else set()))
     print(f"   Downloading {len(dl)}...")
-    close_df, vol_df = bulk_download(dl)
+    close_df, vol_df, open_df = bulk_download(dl)
 
     dv_scale = 1e6 if 'ETF' in name else 1e8
     results, ref_data = [], None
 
     for i, t in enumerate(dl):
         print(f"   Scoring {i+1}/{len(dl)}: {t}     ", end='\r')
-        d = score_ticker(t, close_df, vol_df, min_bars)
+        d = score_ticker(t, close_df, vol_df, open_df, min_bars)
         if d is None:
             continue
 
@@ -242,7 +247,7 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
 
         # Always compute ensure_ticker as reference
         if t == ensure_ticker:
-            d['Composite Score'] = calc_composite(d, dv_scale, t in LEVERAGED)
+            d['Composite Score'] = calc_composite(d, dv_scale)
             enrich(d, t)
             ref_data = dict(d)
 
@@ -256,7 +261,7 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
             continue
         # Must beat benchmark on at least one timeframe
         if d['5D %'] > bench['perf_5d'] or d['15D %'] > bench['perf_15d']:
-            d['Composite Score'] = calc_composite(d, dv_scale, t in LEVERAGED)
+            d['Composite Score'] = calc_composite(d, dv_scale)
             if t != ensure_ticker:
                 enrich(d, t)
             results.append(d)
@@ -427,7 +432,7 @@ def _row(i, r, freq, total, is_ref=False, is_etf=False):
     vs_s = f"<span style='color:#3fb950'>&#x2191;{vs:.1f}x</span>" if vs > 1.3 else f"{vs:.1f}x"
     acc = "&#x1F525;" if r.get('Acceleration') else ""
     brk = "&#x1F4C8;" if r.get('Breakout') else ""
-    lev = "&#x26A1;" if is_etf and r['Ticker'] in LEVERAGED else ""
+    lev = ""
     ref = " <span style='color:#8b949e;font-size:.75rem'>(ref)</span>" if is_ref else ""
     sig = _signal(r, freq, i, total, is_ref)
     hits = _grade(r, freq, i, total, is_ref)
@@ -497,9 +502,11 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
         for i, s in enumerate(h_sorted)
     ) if h_sorted else ""
 
-    # --- TOP PICKS: stocks with all 4 criteria strong ---
+    # --- TOP PICKS: stocks with all 4 criteria strong + Change from Open UP ---
     all_candidates = []
     for i, r in enumerate(stocks):
+        if not r.get('ChangeOpenUp'):
+            continue
         f = sf.get(r['Ticker'], 0)
         hits = _grade(r, f, i+1, len(stocks))
         if hits >= 4:
@@ -507,12 +514,16 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
     for i, r in enumerate(etfs):
         if r.get('_reference'):
             continue
+        if not r.get('ChangeOpenUp'):
+            continue
         f = ef.get(r['Ticker'], 0)
         hits = _grade(r, f, i+1, len(etfs))
         if hits >= 4:
             all_candidates.append((r, f, i+1))
-    # Also scan history-ranked stocks
+    # Also scan history-ranked stocks (only if ChangeOpenUp)
     for i, s in enumerate(h_sorted):
+        if not s.get('ChangeOpenUp'):
+            continue
         f = sf.get(s['Ticker'], 0)
         hits = _grade(s, f, i+1, len(h_sorted))
         if hits >= 4 and not any(c[0]['Ticker'] == s['Ticker'] for c in all_candidates):
@@ -520,13 +531,17 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
     all_candidates.sort(key=lambda x: x[0].get('Composite Score', 0), reverse=True)
     tp_html = "".join(_top_pick_card(r, f, rank, 999) for r, f, rank in all_candidates)
     if not tp_html:
-        # Show 3/4 if no 4/4 exist
+        # Show 3/4 if no 4/4 exist (still require ChangeOpenUp)
         for i, r in enumerate(stocks):
+            if not r.get('ChangeOpenUp'):
+                continue
             f = sf.get(r['Ticker'], 0)
             hits = _grade(r, f, i+1, len(stocks))
             if hits >= 3:
                 all_candidates.append((r, f, i+1))
         for i, s in enumerate(h_sorted):
+            if not s.get('ChangeOpenUp'):
+                continue
             f = sf.get(s['Ticker'], 0)
             hits = _grade(s, f, i+1, len(h_sorted))
             if hits >= 3 and not any(c[0]['Ticker'] == s['Ticker'] for c in all_candidates):
