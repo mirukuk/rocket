@@ -122,24 +122,54 @@ def bench_perf(ticker):
 
 def calc_composite(d, dv_scale):
     import math
-    # Momentum: absolute performance matters most
-    abs_mom = d['3D %'] * 2 + d['5D %'] * 1.5 + d['15D %'] * 0.5
-    # Relative outperformance vs benchmark (bonus, not primary)
-    rel_bonus = max((d['5D vs'] + d['15D vs']) / 2, 0) * 0.3
-    sc = abs_mom + rel_bonus
-    # Liquidity: log scale so mega-caps don't dominate
-    liq = math.log10(max(d['Dollar Volume'], 1e5)) - 5  # 0 at $100K, 4 at $10B
-    liq = max(liq, 0.5)
+    def clamp(value, low, high):
+        return max(low, min(value, high))
+
+    # Bound raw returns so squeeze-like moves do not dominate the table.
+    p3 = clamp(d['3D %'], -8, 12)
+    p5 = clamp(d['5D %'], -10, 25)
+    p15 = clamp(d['15D %'], -15, 45)
+    abs_mom = p3 * 3.0 + p5 * 2.0 + p15 * 1.0
+
+    # Relative outperformance is helpful, but it should be capped as a bonus.
+    rel_vs = clamp((d['5D vs'] + d['15D vs']) / 2, 0, 40)
+    sc = abs_mom + rel_vs * 0.6
+
+    # Keep liquidity relevant without letting it become a huge multiplier.
+    liq = 0.9 + clamp(math.log10(max(d['Dollar Volume'], 1e5)) - 7, 0, 2) * 0.15
     sc *= liq
-    # Volume surge: bigger surge = much bigger bonus (uncapped)
-    if d['Vol Surge'] > 1.3:
-        sc *= (1 + (d['Vol Surge'] - 1) * 0.8)  # 2x surge -> 1.8x multiplier
-    # Acceleration: stocks gaining speed get a strong boost
+
+    # Reward volume confirmation, but cap its influence.
+    vol_bonus = clamp(d['Vol Surge'] - 1, 0, 1.5)
+    sc *= (1 + vol_bonus * 0.25)
+
+    # Acceleration: stocks gaining speed get a measured boost.
     if d['Acceleration']:
-        sc *= 1.5
-    # Breakout: near 20-day high with volume
+        sc *= 1.15
+
+    # Breakout: near 20-day high with volume.
     if d.get('Breakout'):
-        sc *= 1.3
+        sc *= 1.08
+
+    # Penalize names that are fading or badly overextended.
+    if d['3D %'] <= 0:
+        sc *= 0.55
+    elif d['3D %'] < 2:
+        sc *= 0.85
+
+    if d['5D %'] > 35:
+        sc *= 0.85
+    if d['5D %'] > 50:
+        sc *= 0.8
+    if d['15D %'] > 80:
+        sc *= 0.8
+    if d['15D %'] > max(d['5D %'], 1) * 4:
+        sc *= 0.75
+    if not d.get('Acceleration') and d['5D %'] > 25:
+        sc *= 0.75
+    if not d.get('Near High') and d['15D %'] > 80:
+        sc *= 0.7
+
     return round(sc, 2)
 
 # -- Market Analysis ---------------------------------------------------
@@ -502,11 +532,9 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
         for i, s in enumerate(h_sorted)
     ) if h_sorted else ""
 
-    # --- TOP PICKS: stocks with all 4 criteria strong + Change from Open UP ---
+    # --- TOP PICKS: stocks and ETFs with all 4 criteria strong ---
     all_candidates = []
     for i, r in enumerate(stocks):
-        if not r.get('ChangeOpenUp'):
-            continue
         f = sf.get(r['Ticker'], 0)
         hits = _grade(r, f, i+1, len(stocks))
         if hits >= 4:
@@ -514,16 +542,12 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
     for i, r in enumerate(etfs):
         if r.get('_reference'):
             continue
-        if not r.get('ChangeOpenUp'):
-            continue
         f = ef.get(r['Ticker'], 0)
         hits = _grade(r, f, i+1, len(etfs))
         if hits >= 4:
             all_candidates.append((r, f, i+1))
-    # Also scan history-ranked stocks (only if ChangeOpenUp)
+    # Also scan history-ranked stocks
     for i, s in enumerate(h_sorted):
-        if not s.get('ChangeOpenUp'):
-            continue
         f = sf.get(s['Ticker'], 0)
         hits = _grade(s, f, i+1, len(h_sorted))
         if hits >= 4 and not any(c[0]['Ticker'] == s['Ticker'] for c in all_candidates):
@@ -531,17 +555,13 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
     all_candidates.sort(key=lambda x: x[0].get('Composite Score', 0), reverse=True)
     tp_html = "".join(_top_pick_card(r, f, rank, 999) for r, f, rank in all_candidates)
     if not tp_html:
-        # Show 3/4 if no 4/4 exist (still require ChangeOpenUp)
+        # Show 3/4 if no 4/4 exist
         for i, r in enumerate(stocks):
-            if not r.get('ChangeOpenUp'):
-                continue
             f = sf.get(r['Ticker'], 0)
             hits = _grade(r, f, i+1, len(stocks))
             if hits >= 3:
                 all_candidates.append((r, f, i+1))
         for i, s in enumerate(h_sorted):
-            if not s.get('ChangeOpenUp'):
-                continue
             f = sf.get(s['Ticker'], 0)
             hits = _grade(s, f, i+1, len(h_sorted))
             if hits >= 3 and not any(c[0]['Ticker'] == s['Ticker'] for c in all_candidates):

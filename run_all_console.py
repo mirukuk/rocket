@@ -89,7 +89,7 @@ def print_table(title, bench_ticker, bench, items, freqs, history_dates):
 
 
 def print_top_picks(stocks, etfs, sf, ef, sh):
-    """Print TOP PICKS: tickers with all 4 criteria strong + ChangeOpenUp."""
+    """Print TOP PICKS: tickers with all 4 criteria strong."""
     # Build history-ranked stocks
     stock_map = {}
     for day in sh:
@@ -105,8 +105,6 @@ def print_top_picks(stocks, etfs, sf, ef, sh):
 
     # Stocks with 4/4
     for i, r in enumerate(stocks):
-        if not r.get("ChangeOpenUp"):
-            continue
         f = sf.get(r["Ticker"], 0)
         hits = _grade(r, f, i + 1, len(stocks))
         if hits >= 4:
@@ -116,8 +114,6 @@ def print_top_picks(stocks, etfs, sf, ef, sh):
     for i, r in enumerate(etfs):
         if r.get("_reference"):
             continue
-        if not r.get("ChangeOpenUp"):
-            continue
         f = ef.get(r["Ticker"], 0)
         hits = _grade(r, f, i + 1, len(etfs))
         if hits >= 4:
@@ -125,8 +121,6 @@ def print_top_picks(stocks, etfs, sf, ef, sh):
 
     # History stocks with 4/4
     for i, s in enumerate(h_sorted):
-        if not s.get("ChangeOpenUp"):
-            continue
         f = sf.get(s["Ticker"], 0)
         hits = _grade(s, f, i + 1, len(h_sorted))
         if hits >= 4 and not any(c[0]["Ticker"] == s["Ticker"] for c in all_candidates):
@@ -137,15 +131,11 @@ def print_top_picks(stocks, etfs, sf, ef, sh):
     if not all_candidates:
         threshold = 3
         for i, r in enumerate(stocks):
-            if not r.get("ChangeOpenUp"):
-                continue
             f = sf.get(r["Ticker"], 0)
             hits = _grade(r, f, i + 1, len(stocks))
             if hits >= 3:
                 all_candidates.append((r, f, i + 1, hits))
         for i, s in enumerate(h_sorted):
-            if not s.get("ChangeOpenUp"):
-                continue
             f = sf.get(s["Ticker"], 0)
             hits = _grade(s, f, i + 1, len(h_sorted))
             if hits >= 3 and not any(c[0]["Ticker"] == s["Ticker"] for c in all_candidates):
