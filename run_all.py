@@ -14,6 +14,7 @@ import pandas as pd
 ROOT = os.path.dirname(os.path.abspath(__file__))
 HISTORY_DIR = os.path.join(ROOT, 'history')
 MAX_HISTORY = 10
+TODAY_OUTPERFORMANCE_MARGIN = 1.0
 ETF_URL = "https://finviz.com/screener.ashx?v=411&f=ind_exchangetradedfund%2Csh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&o=-volume"
 STOCK_URL = "https://finviz.com/screener.ashx?v=411&f=sh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&ft=3&o=-volume"
 # Extra sources: weekly gainers with volume, new highs, recent breakouts
@@ -26,6 +27,12 @@ def pct(series, n):
     if len(series) < n:
         return 0
     return round((float(series.iloc[-1]) / float(series.iloc[-n]) - 1) * 100, 2)
+
+
+def intraday_pct(open_price, close_price):
+    if open_price is None or open_price <= 0:
+        return None
+    return round((float(close_price) / float(open_price) - 1) * 100, 2)
 
 
 def fetch_finviz(url, limit=200):
@@ -75,6 +82,7 @@ def score_ticker(ticker, close_df, vol_df, open_df, min_bars=15):
         avg20 = float(vols.tail(20).mean())
         avg5 = float(vols.tail(5).mean())
         high20 = float(prices.tail(20).max())
+        today_pct = None
         # True acceleration: 3-day annualized pace beats 5-day pace
         rate3 = (p3 / 3) if p3 > 0 else 0
         rate5 = (p5 / 5) if p5 > 0 else 0
@@ -88,9 +96,12 @@ def score_ticker(ticker, close_df, vol_df, open_df, min_bars=15):
         if ticker in open_df.columns:
             opens = open_df[ticker].dropna()
             if len(opens) > 0:
-                change_open_up = price > float(opens.iloc[-1])
+                latest_open = float(opens.iloc[-1])
+                change_open_up = price > latest_open
+                today_pct = intraday_pct(latest_open, price)
         return {
             'Ticker': ticker, 'Price': round(price, 2),
+            'Today %': today_pct,
             '3D %': p3, '5D %': p5, '15D %': p15,
             'Dollar Volume': price * avg20,
             'Above MA20': price > ma20, 'Above MA50': price > ma50,
@@ -115,13 +126,40 @@ def enrich(data, ticker):
 def bench_perf(ticker):
     try:
         h = yf.Ticker(ticker).history(period="3mo")
-        return {'ticker': ticker, 'perf_5d': pct(h['Close'], 5), 'perf_15d': pct(h['Close'], 15)}
+        latest_open = float(h['Open'].iloc[-1]) if not h.empty else None
+        latest_close = float(h['Close'].iloc[-1]) if not h.empty else None
+        return {
+            'ticker': ticker,
+            'perf_today': intraday_pct(latest_open, latest_close),
+            'perf_5d': pct(h['Close'], 5),
+            'perf_15d': pct(h['Close'], 15),
+        }
     except Exception:
-        return {'ticker': ticker, 'perf_5d': 0, 'perf_15d': 0}
+        return {'ticker': ticker, 'perf_today': None, 'perf_5d': 0, 'perf_15d': 0}
 
 
-def calc_composite(d, dv_scale):
-    import math
+def _is_today_leader(r, bench_today, margin=TODAY_OUTPERFORMANCE_MARGIN):
+    today_pct = r.get('Today %')
+    if today_pct is None or bench_today is None:
+        return False
+    return today_pct >= bench_today + margin
+
+
+def _fmt_pct(value):
+    return 'N/A' if value is None else f"{value:+.2f}%"
+
+
+def _fmt_dollar_volume(value):
+    if value is None:
+        return 'N/A'
+    if value >= 1e9:
+        return f"${value / 1e9:.2f}B"
+    if value >= 1e6:
+        return f"${value / 1e6:.1f}M"
+    return f"${value:,.0f}"
+
+
+def calc_composite(d):
     def clamp(value, low, high):
         return max(low, min(value, high))
 
@@ -134,14 +172,6 @@ def calc_composite(d, dv_scale):
     # Relative outperformance is helpful, but it should be capped as a bonus.
     rel_vs = clamp((d['5D vs'] + d['15D vs']) / 2, 0, 40)
     sc = abs_mom + rel_vs * 0.6
-
-    # Keep liquidity relevant without letting it become a huge multiplier.
-    liq = 0.9 + clamp(math.log10(max(d['Dollar Volume'], 1e5)) - 7, 0, 2) * 0.15
-    sc *= liq
-
-    # Reward volume confirmation, but cap its influence.
-    vol_bonus = clamp(d['Vol Surge'] - 1, 0, 1.5)
-    sc *= (1 + vol_bonus * 0.25)
 
     # Acceleration: stocks gaining speed get a measured boost.
     if d['Acceleration']:
@@ -245,7 +275,10 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
                  min_bars=15, ensure_ticker=None):
     print(f"\n[{name}]")
     bench = bench_perf(bench_ticker)
-    print(f"   {bench_ticker} - 5D: {bench['perf_5d']:+.2f}% | 15D: {bench['perf_15d']:+.2f}%")
+    print(
+        f"   {bench_ticker} - Today: {_fmt_pct(bench['perf_today'])} | "
+        f"5D: {bench['perf_5d']:+.2f}% | 15D: {bench['perf_15d']:+.2f}%"
+    )
 
     # Merge tickers from multiple Finviz sources
     if isinstance(finviz_urls, str):
@@ -263,7 +296,6 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
     print(f"   Downloading {len(dl)}...")
     close_df, vol_df, open_df = bulk_download(dl)
 
-    dv_scale = 1e6 if 'ETF' in name else 1e8
     results, ref_data = [], None
 
     for i, t in enumerate(dl):
@@ -272,12 +304,13 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
         if d is None:
             continue
 
+        d['Today vs'] = round(d['Today %'] - bench['perf_today'], 2) if d.get('Today %') is not None and bench['perf_today'] is not None else None
         d['5D vs'] = round(d['5D %'] - bench['perf_5d'], 2)
         d['15D vs'] = round(d['15D %'] - bench['perf_15d'], 2)
 
         # Always compute ensure_ticker as reference
         if t == ensure_ticker:
-            d['Composite Score'] = calc_composite(d, dv_scale)
+            d['Composite Score'] = calc_composite(d)
             enrich(d, t)
             ref_data = dict(d)
 
@@ -289,9 +322,17 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
         # ABSOLUTE PERFORMANCE GATE: must actually be going up
         if d['3D %'] <= 0 and d['5D %'] <= 0 and t != ensure_ticker:
             continue
-        # Must beat benchmark on at least one timeframe
-        if d['5D %'] > bench['perf_5d'] or d['15D %'] > bench['perf_15d']:
-            d['Composite Score'] = calc_composite(d, dv_scale)
+        # Stocks must clearly lead SOXL today and keep leading on 5D/15D.
+        if 'STOCK' in name:
+            beats_bench = (
+                _is_today_leader(d, bench['perf_today'])
+                and d['5D %'] > bench['perf_5d']
+                and d['15D %'] > bench['perf_15d']
+            )
+        else:
+            beats_bench = d['5D %'] > bench['perf_5d'] or d['15D %'] > bench['perf_15d']
+        if beats_bench:
+            d['Composite Score'] = calc_composite(d)
             if t != ensure_ticker:
                 enrich(d, t)
             results.append(d)
@@ -477,13 +518,13 @@ def _row(i, r, freq, total, is_ref=False, is_etf=False):
         cls = ""
     return (f"<tr{cls}><td>{i}</td><td>{lev}{r['Ticker']}{ref}{badge}</td>"
             f"<td>{r.get('Name', r['Ticker'])[:25]}</td>"
-            f"<td>{r.get('Composite Score', 0):.0f}</td>"
+            f"<td>{_fmt_pct(r.get('Today %'))}</td><td>{_fmt_dollar_volume(r.get('Dollar Volume'))}</td><td>{r.get('Composite Score', 0):.0f}</td>"
             f"<td>{vs_s} {acc}{brk}</td><td>{freq}/{MAX_HISTORY}</td>"
             f"<td>{_sig_html(sig)}</td></tr>")
 
 
 def _table(rows_html):
-    hdr = ''.join(f'<th>{h}</th>' for h in ['#', 'Ticker', 'Name', 'Score', 'Vol/Acc', 'Freq', 'Action'])
+    hdr = ''.join(f'<th>{h}</th>' for h in ['#', 'Ticker', 'Name', 'Today', 'Dollar Vol', 'Score', 'Vol/Acc', 'Freq', 'Action'])
     return f"<table><thead><tr>{hdr}</tr></thead><tbody>{rows_html}</tbody></table>"
 
 
@@ -500,6 +541,8 @@ def _top_pick_card(r, freq, rank, total):
             f"<div><span class='tk'>&#x2B50; {r['Ticker']}</span>"
             f"<span class='nm'> &mdash; {r.get('Name', r['Ticker'])[:30]}</span></div>"
             f"<div class='st'>"
+            f"<div><div class='lbl'>Today</div><div class='val' style='color:#3fb950'>{_fmt_pct(r.get('Today %'))}</div></div>"
+            f"<div><div class='lbl'>Dollar Vol</div><div class='val'>{_fmt_dollar_volume(r.get('Dollar Volume'))}</div></div>"
             f"<div><div class='lbl'>Score</div><div class='val' style='color:#3fb950'>{sc:.0f}</div></div>"
             f"<div><div class='lbl'>Vol/Acc</div><div class='val' style='color:#3fb950'>{vs_s}{acc_s}{brk_s}</div></div>"
             f"<div><div class='lbl'>Freq</div><div class='val' style='color:#3fb950'>{freq}/{MAX_HISTORY}</div></div>"
@@ -537,20 +580,20 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
     for i, r in enumerate(stocks):
         f = sf.get(r['Ticker'], 0)
         hits = _grade(r, f, i+1, len(stocks))
-        if hits >= 4:
+        if hits >= 4 and _is_today_leader(r, sb['perf_today']):
             all_candidates.append((r, f, i+1))
     for i, r in enumerate(etfs):
         if r.get('_reference'):
             continue
         f = ef.get(r['Ticker'], 0)
         hits = _grade(r, f, i+1, len(etfs))
-        if hits >= 4:
+        if hits >= 4 and _is_today_leader(r, sb['perf_today']):
             all_candidates.append((r, f, i+1))
     # Also scan history-ranked stocks
     for i, s in enumerate(h_sorted):
         f = sf.get(s['Ticker'], 0)
         hits = _grade(s, f, i+1, len(h_sorted))
-        if hits >= 4 and not any(c[0]['Ticker'] == s['Ticker'] for c in all_candidates):
+        if hits >= 4 and _is_today_leader(s, sb['perf_today']) and not any(c[0]['Ticker'] == s['Ticker'] for c in all_candidates):
             all_candidates.append((s, f, i+1))
     all_candidates.sort(key=lambda x: x[0].get('Composite Score', 0), reverse=True)
     tp_html = "".join(_top_pick_card(r, f, rank, 999) for r, f, rank in all_candidates)
@@ -559,12 +602,12 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
         for i, r in enumerate(stocks):
             f = sf.get(r['Ticker'], 0)
             hits = _grade(r, f, i+1, len(stocks))
-            if hits >= 3:
+            if hits >= 3 and _is_today_leader(r, sb['perf_today']):
                 all_candidates.append((r, f, i+1))
         for i, s in enumerate(h_sorted):
             f = sf.get(s['Ticker'], 0)
             hits = _grade(s, f, i+1, len(h_sorted))
-            if hits >= 3 and not any(c[0]['Ticker'] == s['Ticker'] for c in all_candidates):
+            if hits >= 3 and _is_today_leader(s, sb['perf_today']) and not any(c[0]['Ticker'] == s['Ticker'] for c in all_candidates):
                 all_candidates.append((s, f, i+1))
         all_candidates.sort(key=lambda x: x[0].get('Composite Score', 0), reverse=True)
         tp_html = "".join(_top_pick_card(r, f, rank, 999) for r, f, rank in all_candidates[:5])
@@ -588,16 +631,17 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
 </div>
 
 <h2 class="tp">&#x1F3C6; TOP PICKS &mdash; All 4 Criteria Strong</h2>
-<p class="hi">Score &gt; 50 &bull; Vol Surge or Accel &bull; Freq &ge; 3 &bull; Action = BUY</p>
+<p class="hi">Today &gt; SOXL by {TODAY_OUTPERFORMANCE_MARGIN:.1f}% &bull; 5D/15D beat SOXL &bull; Vol Surge or Accel &bull; Action = BUY</p>
 {tp_html if tp_html else "<p class='none-msg'>No 4/4 picks right now &mdash; showing best 3/4 above</p>"}
 
 <h2>ETF Screener (Beat QQQ)</h2>
-<p class="bi">QQQ: 5D {eb['perf_5d']:+.2f}% | 15D {eb['perf_15d']:+.2f}%</p>
+<p class="bi">QQQ: Today {_fmt_pct(eb['perf_today'])} | 5D {eb['perf_5d']:+.2f}% | 15D {eb['perf_15d']:+.2f}%</p>
 <p class="hi">History: {e_days}</p>
 {_table(e_rows)}
 
 <h2>Stock Screener (Beat SOXL)</h2>
-<p class="bi">SOXL: 5D {sb['perf_5d']:+.2f}% | 15D {sb['perf_15d']:+.2f}%</p>
+<p class="bi">SOXL: Today {_fmt_pct(sb['perf_today'])} | 5D {sb['perf_5d']:+.2f}% | 15D {sb['perf_15d']:+.2f}%</p>
+<p class="hi">Filter: Today &gt; SOXL by {TODAY_OUTPERFORMANCE_MARGIN:.1f}% and 5D/15D must also beat SOXL</p>
 <p class="hi">History: {s_days}</p>
 {_table(s_rows)}
 
