@@ -27,21 +27,23 @@ Source: Finviz screener — US stocks with:
 Filters applied by the script:
 - **Dollar volume > $75M/day** (liquidity)
 - **Price above MA20 AND MA50** (uptrend confirmed)
+- **Today % must beat SOXL by at least 1.0%** (stronger intraday leadership)
 - **5D and 15D return both beat SOXL** (must outperform the benchmark)
 
 ### 3. Scoring (How to rank)
 
 ```
-Composite Score = Avg Relative Return × (Dollar Volume / $100M)
-                  × Vol Surge bonus (if 5D avg vol > 1.2× 20D avg)
-                  × Leveraged bonus (2× for leveraged ETFs)
-                  × Acceleration bonus (1.3× if 3D > 60% of 5D return)
+Composite Score = Bounded 3D/5D/15D momentum
+                  + capped 5D/15D relative-strength bonus
+                  × Acceleration bonus
+                  × Breakout bonus
+                  with penalties for fading or overextended moves
 ```
 
 ### 4. How to Buy & Sell
 
 **Entry:**
-- Pick from the top of the Stock Screener table (highest composite score)
+- Pick from the top of the Stock Screener table (highest composite score, with Today % clearly ahead of SOXL)
 - Prefer stocks with **high frequency** (appear across many days → persistent momentum)
 - Prefer stocks with **Vol Surge ↑** (institutional interest) and **🔥 Acceleration** (momentum accelerating)
 
