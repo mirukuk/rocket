@@ -82,7 +82,12 @@ def score_ticker(ticker, close_df, vol_df, open_df, min_bars=15):
         avg20 = float(vols.tail(20).mean())
         avg5 = float(vols.tail(5).mean())
         high20 = float(prices.tail(20).max())
+        # Today %: standard daily change = previous close -> current close
         today_pct = None
+        if len(prices) >= 2:
+            prev_close = float(prices.iloc[-2])
+            if prev_close > 0:
+                today_pct = round((price / prev_close - 1) * 100, 2)
         # True acceleration: 3-day annualized pace beats 5-day pace
         rate3 = (p3 / 3) if p3 > 0 else 0
         rate5 = (p5 / 5) if p5 > 0 else 0
@@ -98,7 +103,6 @@ def score_ticker(ticker, close_df, vol_df, open_df, min_bars=15):
             if len(opens) > 0:
                 latest_open = float(opens.iloc[-1])
                 change_open_up = price > latest_open
-                today_pct = intraday_pct(latest_open, price)
         return {
             'Ticker': ticker, 'Price': round(price, 2),
             'Today %': today_pct,
@@ -126,11 +130,15 @@ def enrich(data, ticker):
 def bench_perf(ticker):
     try:
         h = yf.Ticker(ticker).history(period="3mo")
-        latest_open = float(h['Open'].iloc[-1]) if not h.empty else None
-        latest_close = float(h['Close'].iloc[-1]) if not h.empty else None
+        if len(h) >= 2:
+            latest_close = float(h['Close'].iloc[-1])
+            prev_close = float(h['Close'].iloc[-2])
+            perf_today = round((latest_close / prev_close - 1) * 100, 2) if prev_close > 0 else None
+        else:
+            perf_today = None
         return {
             'ticker': ticker,
-            'perf_today': intraday_pct(latest_open, latest_close),
+            'perf_today': perf_today,
             'perf_5d': pct(h['Close'], 5),
             'perf_15d': pct(h['Close'], 15),
         }
