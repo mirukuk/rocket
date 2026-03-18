@@ -570,14 +570,17 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
              f"(DD:{smh['drawdown']:.1f}% Rec:{smh['recovery']:.1f}%)</p>") if smh['bounce'] else ""
 
     e_rows = "".join(_row(i+1, r, ef.get(r['Ticker'], 0), len(etfs), r.get('_reference'), True) for i, r in enumerate(etfs))
-    s_rows = "".join(_row(i+1, r, sf.get(r['Ticker'], 0), len(stocks)) for i, r in enumerate(stocks))
+    stocks_by_dvol = sorted(stocks, key=lambda x: x.get('Dollar Volume') or 0, reverse=True)
+    s_rows = "".join(_row(i+1, r, sf.get(r['Ticker'], 0), len(stocks_by_dvol)) for i, r in enumerate(stocks_by_dvol))
 
-    # History score ranking
-    stock_map = {}
+    # History score ranking — best snapshot per ticker, sorted by Dollar Volume
+    stock_best = {}
     for day in sh:
         for s in day.get('stocks', []):
-            stock_map[s['Ticker']] = s
-    h_sorted = sorted(stock_map.values(), key=lambda x: x.get('Composite Score', 0), reverse=True) if stock_map else []
+            t = s['Ticker']
+            if t not in stock_best or s.get('Composite Score', 0) > stock_best[t].get('Composite Score', 0):
+                stock_best[t] = s
+    h_sorted = sorted(stock_best.values(), key=lambda x: x.get('Dollar Volume') or 0, reverse=True) if stock_best else []
     h_rows = "".join(
         _row(i+1, s, sf.get(s['Ticker'], 0), len(h_sorted))
         for i, s in enumerate(h_sorted)
