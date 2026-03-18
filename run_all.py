@@ -583,43 +583,6 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
         for i, s in enumerate(h_sorted)
     ) if h_sorted else ""
 
-    # --- TOP PICKS: stocks and ETFs with all 4 criteria strong ---
-    all_candidates = []
-    for i, r in enumerate(stocks):
-        f = sf.get(r['Ticker'], 0)
-        hits = _grade(r, f, i+1, len(stocks))
-        if hits >= 4 and _is_today_leader(r, sb['perf_today']):
-            all_candidates.append((r, f, i+1))
-    for i, r in enumerate(etfs):
-        if r.get('_reference'):
-            continue
-        f = ef.get(r['Ticker'], 0)
-        hits = _grade(r, f, i+1, len(etfs))
-        if hits >= 4 and _is_today_leader(r, sb['perf_today']):
-            all_candidates.append((r, f, i+1))
-    # Also scan history-ranked stocks
-    for i, s in enumerate(h_sorted):
-        f = sf.get(s['Ticker'], 0)
-        hits = _grade(s, f, i+1, len(h_sorted))
-        if hits >= 4 and _is_today_leader(s, sb['perf_today']) and not any(c[0]['Ticker'] == s['Ticker'] for c in all_candidates):
-            all_candidates.append((s, f, i+1))
-    all_candidates.sort(key=lambda x: x[0].get('Composite Score', 0), reverse=True)
-    tp_html = "".join(_top_pick_card(r, f, rank, 999) for r, f, rank in all_candidates)
-    if not tp_html:
-        # Show 3/4 if no 4/4 exist
-        for i, r in enumerate(stocks):
-            f = sf.get(r['Ticker'], 0)
-            hits = _grade(r, f, i+1, len(stocks))
-            if hits >= 3 and _is_today_leader(r, sb['perf_today']):
-                all_candidates.append((r, f, i+1))
-        for i, s in enumerate(h_sorted):
-            f = sf.get(s['Ticker'], 0)
-            hits = _grade(s, f, i+1, len(h_sorted))
-            if hits >= 3 and _is_today_leader(s, sb['perf_today']) and not any(c[0]['Ticker'] == s['Ticker'] for c in all_candidates):
-                all_candidates.append((s, f, i+1))
-        all_candidates.sort(key=lambda x: x[0].get('Composite Score', 0), reverse=True)
-        tp_html = "".join(_top_pick_card(r, f, rank, 999) for r, f, rank in all_candidates[:5])
-
     s_days = ", ".join(d['date'] for d in sh) or "None"
     e_days = ", ".join(d['date'] for d in eh) or "None"
 
@@ -637,10 +600,6 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
 <div class="m"><div class="ml">Fear &amp; Greed</div><div class="mv">{fg['score'] if fg else 'N/A'}</div><div class="ms {fg_cls}">{fg['status'] if fg else 'N/A'}</div></div>
 <div class="m"><div class="ml">SPY vs 200-MA</div><div class="mv">${sp['price'] if sp else 'N/A'}</div><div class="ms">{'ABOVE' if sp and sp['above'] else 'BELOW'} ${sp['ma200'] if sp else 'N/A'}</div></div>
 </div>
-
-<h2 class="tp">&#x1F3C6; TOP PICKS &mdash; All 4 Criteria Strong</h2>
-<p class="hi">Today &gt; SOXL by {TODAY_OUTPERFORMANCE_MARGIN:.1f}% &bull; 5D/15D beat SOXL &bull; Vol Surge or Accel &bull; Action = BUY</p>
-{tp_html if tp_html else "<p class='none-msg'>No 4/4 picks right now &mdash; showing best 3/4 above</p>"}
 
 <h2>ETF Screener (Beat QQQ)</h2>
 <p class="bi">QQQ: Today {_fmt_pct(eb['perf_today'])} | 5D {eb['perf_5d']:+.2f}% | 15D {eb['perf_15d']:+.2f}%</p>

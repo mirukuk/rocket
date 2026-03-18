@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Console-only market screener runner (no HTML output).
-Shows all the same information as the HTML dashboard."""
+"""Market screener runner — console output + HTML generation."""
 
 import argparse
+import os
 from collections import Counter
 from datetime import datetime
 
 from run_all import (
     ETF_URL,
     MAX_HISTORY,
+    ROOT,
     STOCK_URL,
     STOCK_URL2,
     STOCK_URL3,
@@ -16,6 +17,7 @@ from run_all import (
     _grade,
     _is_today_leader,
     _signal,
+    generate_html,
     get_market,
     run_screener,
     save_history,
@@ -188,16 +190,19 @@ def print_top_picks(stocks, etfs, sf, ef, sh, stock_bench):
 
 def print_history_ranking(sh, sf):
     """Print Stock Score Ranking from history data."""
-    stock_map = {}
+    # Keep the best-score snapshot for each ticker, sorted by Dollar Volume
+    stock_best = {}
     for day in sh:
         for s in day.get("stocks", []):
-            stock_map[s["Ticker"]] = s
-    if not stock_map:
+            t = s["Ticker"]
+            if t not in stock_best or s.get("Composite Score", 0) > stock_best[t].get("Composite Score", 0):
+                stock_best[t] = s
+    if not stock_best:
         return
 
     h_sorted = sorted(
-        stock_map.values(),
-        key=lambda x: x.get("Composite Score", 0),
+        stock_best.values(),
+        key=lambda x: x.get("Dollar Volume") or 0,
         reverse=True,
     )
 
@@ -233,6 +238,7 @@ def print_history_ranking(sh, sf):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-save-history", action="store_true")
+    parser.add_argument("--no-html", action="store_true", help="Skip HTML generation")
     args = parser.parse_args()
 
     now = f"{datetime.now():%Y-%m-%d %H:%M}"
@@ -265,20 +271,27 @@ def main():
     e_days = [d["date"] for d in eh]
     print(f"   History: {len(sh)}d stocks, {len(eh)}d ETFs")
 
-    # --- Top Picks ---
-    print_top_picks(stocks, etfs, sf, ef, sh, sb)
-
     # --- ETF table ---
     print_table("ETF Screener (Beat QQQ)", "QQQ", eb, etfs, ef, e_days)
 
     # --- Stock table ---
-    print_table("Stock Screener (Beat SOXL)", "SOXL", sb, stocks, sf, s_days)
+    stocks_by_dvol = sorted(stocks, key=lambda x: x.get("Dollar Volume") or 0, reverse=True)
+    print_table("Stock Screener (Beat SOXL)", "SOXL", sb, stocks_by_dvol, sf, s_days)
 
     # --- History ranking ---
     print_history_ranking(sh, sf)
 
+    # --- Generate HTML ---
+    if not args.no_html:
+        print("\n[GENERATING HTML]")
+        html = generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh)
+        out = os.path.join(ROOT, "index.html")
+        with open(out, "w") as f:
+            f.write(html)
+        print(f"   -> {out}")
+
     print(f"\n{'=' * 70}")
-    print("  [DONE] Console output only (no HTML generated)")
+    print("  [DONE]")
     print(f"{'=' * 70}\n")
 
 
