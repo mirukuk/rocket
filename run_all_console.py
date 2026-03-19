@@ -17,6 +17,7 @@ from run_all import (
     _grade,
     _is_today_leader,
     _signal,
+    calc_composite,
     generate_html,
     get_market,
     run_screener,
@@ -199,6 +200,10 @@ def print_history_ranking(sh, sf):
                 stock_best[t] = s
     if not stock_best:
         return
+
+    # Recalculate composite scores with the latest scoring formula
+    for s in stock_best.values():
+        s["Composite Score"] = calc_composite(s)
 
     h_sorted = sorted(
         stock_best.values(),
