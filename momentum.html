@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Momentum Screener v3</title><style>* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#0d1117; color:#c9d1d9; min-height:100vh; padding:2rem; }
+.c { max-width:1200px; margin:0 auto; }
+h1 { font-size:1.5rem; margin-bottom:.5rem; color:#58a6ff; }
+h2 { font-size:1.1rem; margin:1.5rem 0 .5rem; color:#8b949e; border-bottom:1px solid #30363d; padding-bottom:.5rem; }
+h2.tp { color:#f0c040; border-bottom:2px solid #f0c040; font-size:1.3rem; }
+.date { color:#8b949e; font-size:.875rem; margin-bottom:2rem; }
+.sig { font-size:2.5rem; font-weight:bold; margin:1rem 0; padding:1rem 2rem; border-radius:.5rem; display:inline-block; }
+.sig.buy { background:#238636; color:#fff; }
+.sig.sell { background:#da3633; color:#fff; }
+.sig.cautious { background:#d29922; color:#fff; }
+.metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1rem; margin-bottom:2rem; }
+.m { background:#161b22; padding:1rem; border-radius:.5rem; }
+.ml { color:#8b949e; font-size:.75rem; margin-bottom:.25rem; }
+.mv { font-size:1.25rem; font-weight:600; }
+.ms { font-size:.75rem; margin-top:.25rem; }
+.sf { color:#f85149; } .sg { color:#3fb950; } .sn { color:#d29922; }
+table { width:100%; border-collapse:collapse; margin-bottom:1rem; }
+th,td { text-align:left; padding:.5rem .75rem; border-bottom:1px solid #30363d; }
+th { color:#8b949e; font-weight:500; font-size:.75rem; text-transform:uppercase; }
+td { font-size:.85rem; } tr:hover { background:#161b22; }
+.bi { color:#8b949e; font-size:.875rem; margin-bottom:1rem; }
+.hi { color:#58a6ff; font-size:.875rem; margin-bottom:1rem; }
+tr.champ { background:linear-gradient(90deg,#1a2a1a 0%,#0d1117 100%); border-left:3px solid #f0c040; }
+tr.champ td { font-weight:600; }
+.badge { display:inline-block; font-size:.65rem; padding:2px 6px; border-radius:3px; margin-left:4px; font-weight:700; vertical-align:middle; }
+.badge.g4 { background:#238636; color:#fff; }
+.badge.g3 { background:#1a6b2a; color:#ccc; }
+.dim { opacity:.5; }
+.tp-card { background:linear-gradient(135deg,#1a2a1a,#161b22); border:1px solid #f0c040; border-radius:.5rem; padding:1rem 1.5rem; margin-bottom:.75rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.5rem; }
+.tp-card .tk { font-size:1.3rem; font-weight:700; color:#f0c040; }
+.tp-card .nm { color:#8b949e; font-size:.85rem; }
+.tp-card .st { display:flex; gap:1.5rem; align-items:center; flex-wrap:wrap; }
+.tp-card .st div { text-align:center; }
+.tp-card .st .lbl { font-size:.65rem; color:#8b949e; text-transform:uppercase; }
+.tp-card .st .val { font-size:1rem; font-weight:600; }
+.regime-bar { background:#161b22; border-radius:.25rem; height:1.5rem; margin:.5rem 0; position:relative; }
+.regime-fill { height:100%; border-radius:.25rem; }</style></head>
+<body><div class="c">
+<h1>Momentum Screener v3</h1><p class="date">2026-03-28 11:22</p>
+<div class="sig sell">RISK OFF</div>
+
+<div class='regime-bar'><div class='regime-fill' style='width:0%;background:#da3633'></div></div>
+<div class="metrics">
+<div class="m"><div class="ml">Regime Score</div><div class="mv">15/100</div><div class="ms">RISK OFF</div></div>
+<div class="m"><div class="ml">Allocation</div><div class="mv">0%</div><div class="ms">5 pos @ 20%</div></div>
+<div class="m"><div class="ml">VIX</div><div class="mv">31.05</div><div class="ms">EXTREME</div></div>
+<div class="m"><div class="ml">Fear &amp; Greed</div><div class="mv">N/A</div><div class="ms sn"></div></div>
+<div class="m"><div class="ml">SPY vs 200MA</div><div class="mv">$634.09</div><div class="ms">BELOW $657.96</div></div>
+<div class="m"><div class="ml">Stops</div><div class="mv">15%/25%</div><div class="ms">Stock / Leveraged</div></div>
+</div>
+
+
+
+<h2>Stock Screener (Beat SOXL)</h2>
+<p class="bi">SOXL: Today -4.82% | 5D -12.11% | 15D -12.58%</p>
+<p class="hi">Filter: Today &gt; SOXL by 1.0% + 5D/15D beat  |  History: 2026-03-16, 2026-03-17, 2026-03-18, 2026-03-19, 2026-03-20, 2026-03-23, 2026-03-24, 2026-03-25, 2026-03-26, 2026-03-27</p>
+<table><thead><tr><th>#</th><th>Ticker</th><th>Name</th><th>Today</th><th>$Vol</th><th>Score</th><th>Vol/Acc</th><th>Freq</th><th>Action</th></tr></thead><tbody><tr class='dim'><td>1</td><td>BW</td><td>Babcock & Wilcox Enterpri</td><td>+2.77%</td><td>$99.6M</td><td>377</td><td>0.7x </td><td>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td></tr><tr><td>2</td><td>PTEN<span class='badge g3'>3/4</span></td><td>Patterson-UTI Energy, Inc</td><td>+0.89%</td><td>$133.6M</td><td>298</td><td>0.8x &#x1F525;</td><td>0/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr><tr><td>3</td><td>AGX<span class='badge g3'>3/4</span></td><td>Argan, Inc.</td><td>+37.91%</td><td>$356.3M</td><td>281</td><td><span style='color:#3fb950'>&#x2191;1.3x</span> &#x1F525;&#x1F4C8;</td><td>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr><tr><td>4</td><td>ERX<span class='badge g3'>3/4</span></td><td>Direxion Energy Bull 2X E</td><td>+3.41%</td><td>$83.6M</td><td>256</td><td>0.7x &#x1F525;</td><td>0/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr><tr class='dim'><td>5</td><td>NBR</td><td>Nabors Industries Ltd.</td><td>+0.16%</td><td>$32.4M</td><td>248</td><td>0.9x </td><td>1/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td></tr><tr><td>6</td><td>BNO<span class='badge g3'>3/4</span></td><td>United States Brent Oil F</td><td>+4.25%</td><td>$508.9M</td><td>243</td><td>1.0x &#x1F525;&#x1F4C8;</td><td>0/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr><tr class='dim'><td>7</td><td>VAL</td><td>Valaris Limited</td><td>+0.29%</td><td>$110.1M</td><td>220</td><td>1.0x </td><td>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td></tr><tr class='dim'><td>8</td><td>VIST</td><td>Vista Energy S.A.B. de C.</td><td>+2.63%</td><td>$177.2M</td><td>219</td><td>0.9x </td><td>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td></tr><tr class='dim'><td>9</td><td>DOW</td><td>Dow Inc.</td><td>+3.42%</td><td>$656.1M</td><td>214</td><td>0.8x </td><td>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td></tr><tr class='dim'><td>10</td><td>GUSH</td><td>Direxion Daily S&P Oil & </td><td>+2.91%</td><td>$116.5M</td><td>214</td><td>0.9x </td><td>1/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td></tr><tr><td>11</td><td>PBR<span class='badge g3'>3/4</span></td><td>Petroleo Brasileiro S.A. </td><td>+2.16%</td><td>$793.4M</td><td>212</td><td>0.9x &#x1F525;</td><td>0/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr><tr><td>12</td><td>APA<span class='badge g3'>3/4</span></td><td>APA Corporation</td><td>+3.71%</td><td>$462.6M</td><td>212</td><td>1.1x &#x1F4C8;</td><td>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr><tr><td>13</td><td>VET<span class='badge g3'>3/4</span></td><td>Vermilion Energy Inc.</td><td>+4.67%</td><td>$48.2M</td><td>209</td><td>0.9x &#x1F525;</td><td>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr><tr><td>14</td><td>USO<span class='badge g3'>3/4</span></td><td>United States Oil Fund</td><td>+5.92%</td><td>$8.26B</td><td>208</td><td>0.8x &#x1F525;</td><td>0/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr><tr><td>15</td><td>WDS<span class='badge g3'>3/4</span></td><td>Woodside Energy Group Lim</td><td>+4.03%</td><td>$43.7M</td><td>202</td><td>0.9x &#x1F525;</td><td>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr></tbody></table>
+
+<h2>ETF Screener (Beat QQQ)</h2>
+<p class="bi">QQQ: Today -1.95% | 5D -4.32% | 15D -7.43%</p>
+<p class="hi">History: 2026-03-16, 2026-03-17, 2026-03-18, 2026-03-19, 2026-03-20, 2026-03-23, 2026-03-24, 2026-03-25, 2026-03-26, 2026-03-27</p>
+<table><thead><tr><th>#</th><th>Ticker</th><th>Name</th><th>Today</th><th>$Vol</th><th>Score</th><th>Vol/Acc</th><th>Freq</th><th>Action</th></tr></thead><tbody><tr><td>1</td><td>ERX<span class='badge g3'>3/4</span></td><td>Direxion Energy Bull 2X E</td><td>+3.41%</td><td>$83.6M</td><td>256</td><td>0.7x &#x1F525;</td><td>0/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr><tr><td>2</td><td>BNO<span class='badge g3'>3/4</span></td><td>United States Brent Oil F</td><td>+4.25%</td><td>$508.9M</td><td>243</td><td>1.0x &#x1F525;&#x1F4C8;</td><td>0/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr><tr class='dim'><td>3</td><td>GUSH</td><td>Direxion Daily S&P Oil & </td><td>+2.91%</td><td>$116.5M</td><td>214</td><td>0.9x </td><td>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td></tr><tr><td>4</td><td>USO<span class='badge g3'>3/4</span></td><td>United States Oil Fund</td><td>+5.92%</td><td>$8.26B</td><td>208</td><td>0.8x &#x1F525;</td><td>0/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td></tr><tr class='dim'><td>5</td><td>OIH</td><td>VanEck Oil Services ETF</td><td>+0.71%</td><td>$250.3M</td><td>120</td><td>1.0x </td><td>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td></tr><tr class='dim'><td>6</td><td>SBIT</td><td>ProShares UltraShort Bitc</td><td>+7.40%</td><td>$108.8M</td><td>30</td><td>0.7x &#x1F525;</td><td>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td></tr><tr class='dim'><td>7</td><td>ETHD</td><td>ProShares UltraShort Ethe</td><td>+5.57%</td><td>$54.0M</td><td>27</td><td>0.7x &#x1F525;</td><td>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td></tr></tbody></table>
+
+</div></body></html>

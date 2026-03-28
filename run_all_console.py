@@ -12,6 +12,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import yfinance as yf
 import requests
 import pandas as pd
+import logging
+
+# Silence yfinance / urllib3 noise
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+logging.getLogger("urllib3").setLevel(logging.CRITICAL)
+logging.getLogger("peewee").setLevel(logging.CRITICAL)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 HISTORY_DIR = os.path.join(ROOT, 'history')
@@ -53,7 +59,13 @@ def bulk_download(tickers):
     if not tickers:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     try:
-        data = yf.download(tickers, period="3mo", auto_adjust=True, threads=True, progress=False)
+        _stderr = sys.stderr
+        sys.stderr = open(os.devnull, 'w')
+        try:
+            data = yf.download(tickers, period="3mo", auto_adjust=True, threads=True, progress=False)
+        finally:
+            sys.stderr.close()
+            sys.stderr = _stderr
         if data.empty:
             return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         if len(tickers) == 1:
@@ -307,9 +319,11 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
     close_df, vol_df, open_df = bulk_download(dl)
 
     results, ref_data = [], None
+    total = len(dl)
 
     for i, t in enumerate(dl):
-        print(f"   Scoring {i+1}/{len(dl)}: {t}     ", end='\r')
+        sys.stdout.write(f"\r   Scoring {i+1}/{total}" + " " * 30)
+        sys.stdout.flush()
         d = score_ticker(t, close_df, vol_df, open_df, min_bars)
         if d is None:
             continue
@@ -321,7 +335,6 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
         # Always compute ensure_ticker as reference
         if t == ensure_ticker:
             d['Composite Score'] = calc_composite(d)
-            enrich(d, t)
             ref_data = dict(d)
 
         if d['Dollar Volume'] < min_dv:
@@ -343,11 +356,21 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
             beats_bench = d['5D %'] > bench['perf_5d'] or d['15D %'] > bench['perf_15d']
         if beats_bench:
             d['Composite Score'] = calc_composite(d)
-            if t != ensure_ticker:
-                enrich(d, t)
             results.append(d)
 
-    print(f"\n   {len(results)} passed filters")
+    # Clear progress line
+    sys.stdout.write("\r" + " " * 50 + "\r")
+    sys.stdout.flush()
+
+    # Enrich names after scoring loop (avoids noisy API calls breaking progress)
+    sys.stdout.write(f"   Enriching names for {len(results)} tickers...")
+    sys.stdout.flush()
+    for d in results:
+        enrich(d, d['Ticker'])
+    if ref_data:
+        enrich(ref_data, ref_data['Ticker'])
+    sys.stdout.write(f"\r   {len(results)} passed filters" + " " * 20 + "\n")
+    sys.stdout.flush()
 
     if ensure_ticker and ref_data and not any(r['Ticker'] == ensure_ticker for r in results):
         ref_data['_reference'] = True
