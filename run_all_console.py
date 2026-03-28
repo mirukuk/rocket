@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
-"""Market screener runner  console output + HTML generation. Note: merged with core modules."""
+"""
+Unified Screener — Short-term momentum + regime + trailing stops + portfolio.
 
-# --- MODULES FROM RUN_ALL.PY ---
+Combines run_all_console.py (composite scoring, benchmark gates, HTML)
+with run_momentum_console.py (regime detection, trailing stops, rebalance).
+
+Usage:
+  python run_all_console.py
+  python run_all_console.py --mark-rebalanced
+  python run_all_console.py --no-save-history --no-html
+"""
 
 import sys, os, json, re, argparse
 from datetime import datetime
@@ -21,26 +29,57 @@ logging.getLogger("peewee").setLevel(logging.CRITICAL)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 HISTORY_DIR = os.path.join(ROOT, 'history')
+REBALANCE_FILE = os.path.join(ROOT, 'last_rebalance.json')
 MAX_HISTORY = 10
+
+# ── Configuration ─────────────────────────────────────────────────────
+MAX_POSITIONS = 5
+POSITION_SIZE = 20.0
+TRAILING_STOP_STOCK = 15.0
+TRAILING_STOP_LEVERAGED = 25.0
 TODAY_OUTPERFORMANCE_MARGIN = 1.0
+OVEREXTENSION_PCT = 20.0
+
+LEVERAGED_TICKERS = {
+    'TQQQ', 'SOXL', 'UPRO', 'SPXL', 'TECL', 'FNGU', 'LABU', 'TNA',
+    'UDOW', 'CURE', 'DFEN', 'DRN', 'DUSL', 'FAS', 'HIBL', 'MIDU',
+    'NAIL', 'RETL', 'TPOR', 'WANT', 'WEBL',
+    'SQQQ', 'SPXS', 'SDOW', 'FAZ', 'TZA', 'LABD',
+}
+
 ETF_URL = "https://finviz.com/screener.ashx?v=411&f=ind_exchangetradedfund%2Csh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&o=-volume"
 STOCK_URL = "https://finviz.com/screener.ashx?v=411&f=sh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&ft=3&o=-volume"
-# Extra sources: weekly gainers with volume, new highs, recent breakouts
 STOCK_URL2 = "https://finviz.com/screener.ashx?v=411&f=sh_avgvol_o400%2Csh_price_o10%2Cta_change_u%2Cta_perf_1w10o%2Cta_sma20_pa&ft=3&o=-perf1w"
 STOCK_URL3 = "https://finviz.com/screener.ashx?v=411&f=sh_avgvol_o400%2Csh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_1w10o%2Cta_sma20_pa&ft=3&o=-perf1w"
 
-# -- Helpers -----------------------------------------------------------
+SEP = "-" * 72
+SEP2 = "=" * 72
+
+
+# ── Helpers ───────────────────────────────────────────────────────────
 
 def pct(series, n):
     if len(series) < n:
-        return 0
+        return None
     return round((float(series.iloc[-1]) / float(series.iloc[-n]) - 1) * 100, 2)
 
 
-def intraday_pct(open_price, close_price):
-    if open_price is None or open_price <= 0:
-        return None
-    return round((float(close_price) / float(open_price) - 1) * 100, 2)
+def fmt_pct(value):
+    return "N/A" if value is None else f"{value:+.2f}%"
+
+
+def fmt_dollar_volume(value):
+    if value is None:
+        return "N/A"
+    if value >= 1e9:
+        return f"${value / 1e9:.2f}B"
+    if value >= 1e6:
+        return f"${value / 1e6:.1f}M"
+    return f"${value:,.0f}"
+
+
+def is_leveraged(ticker):
+    return ticker in LEVERAGED_TICKERS
 
 
 def fetch_finviz(url, limit=200):
@@ -55,14 +94,15 @@ def fetch_finviz(url, limit=200):
         return []
 
 
-def bulk_download(tickers):
+def bulk_download(tickers, period="1y"):
     if not tickers:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     try:
         _stderr = sys.stderr
         sys.stderr = open(os.devnull, 'w')
         try:
-            data = yf.download(tickers, period="3mo", auto_adjust=True, threads=True, progress=False)
+            data = yf.download(tickers, period=period, auto_adjust=True,
+                               threads=True, progress=False)
         finally:
             sys.stderr.close()
             sys.stderr = _stderr
@@ -72,74 +112,22 @@ def bulk_download(tickers):
             return (data[['Close']].rename(columns={'Close': tickers[0]}),
                     data[['Volume']].rename(columns={'Volume': tickers[0]}),
                     data[['Open']].rename(columns={'Open': tickers[0]}))
-        return (data.get('Close', pd.DataFrame()), data.get('Volume', pd.DataFrame()),
+        return (data.get('Close', pd.DataFrame()),
+                data.get('Volume', pd.DataFrame()),
                 data.get('Open', pd.DataFrame()))
     except Exception as e:
         print(f"   Download error: {e}")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 
-def score_ticker(ticker, close_df, vol_df, open_df, min_bars=15):
+def enrich_name(ticker):
     try:
-        if ticker not in close_df.columns:
-            return None
-        prices = close_df[ticker].dropna()
-        vols = vol_df[ticker].dropna()
-        if len(prices) < min_bars:
-            return None
-        price = float(prices.iloc[-1])
-        if price <= 0:
-            return None
-        p3, p5, p15 = pct(prices, 3), pct(prices, 5), pct(prices, 15)
-        ma20 = float(prices.tail(20).mean())
-        ma50 = float(prices.tail(50).mean()) if len(prices) >= 50 else price
-        avg20 = float(vols.tail(20).mean())
-        avg5 = float(vols.tail(5).mean())
-        high20 = float(prices.tail(20).max())
-        # Today %: standard daily change = previous close -> current close
-        today_pct = None
-        if len(prices) >= 2:
-            prev_close = float(prices.iloc[-2])
-            if prev_close > 0:
-                today_pct = round((price / prev_close - 1) * 100, 2)
-        # True acceleration: 3-day annualized pace beats 5-day pace
-        rate3 = (p3 / 3) if p3 > 0 else 0
-        rate5 = (p5 / 5) if p5 > 0 else 0
-        acc = rate3 > rate5 and p3 > 1.0  # gaining speed AND 3D > +1%
-        # Breakout: price within 2% of 20-day high with volume
-        near_high = (high20 - price) / high20 < 0.02 if high20 > 0 else False
-        vs = round(avg5 / avg20, 2) if avg20 > 0 else 1.0
-        breakout = near_high and vs > 1.0
-        # Change from open: compare latest close to latest open
-        change_open_up = False
-        if ticker in open_df.columns:
-            opens = open_df[ticker].dropna()
-            if len(opens) > 0:
-                latest_open = float(opens.iloc[-1])
-                change_open_up = price > latest_open
-        return {
-            'Ticker': ticker, 'Price': round(price, 2),
-            'Today %': today_pct,
-            '3D %': p3, '5D %': p5, '15D %': p15,
-            'Dollar Volume': price * avg20,
-            'Above MA20': price > ma20, 'Above MA50': price > ma50,
-            'Vol Surge': vs,
-            'Acceleration': acc,
-            'Breakout': breakout,
-            'Near High': near_high,
-            'ChangeOpenUp': change_open_up,
-        }
+        return yf.Ticker(ticker).info.get('shortName', ticker)
     except Exception:
-        return None
+        return ticker
 
 
-def enrich(data, ticker):
-    try:
-        data['Name'] = yf.Ticker(ticker).info.get('shortName', ticker)
-    except Exception:
-        data['Name'] = ticker
-    return data
-
+# ── Benchmark ─────────────────────────────────────────────────────────
 
 def bench_perf(ticker):
     try:
@@ -153,8 +141,8 @@ def bench_perf(ticker):
         return {
             'ticker': ticker,
             'perf_today': perf_today,
-            'perf_5d': pct(h['Close'], 5),
-            'perf_15d': pct(h['Close'], 15),
+            'perf_5d': pct(h['Close'], 5) or 0,
+            'perf_15d': pct(h['Close'], 15) or 0,
         }
     except Exception:
         return {'ticker': ticker, 'perf_today': None, 'perf_5d': 0, 'perf_15d': 0}
@@ -167,99 +155,86 @@ def _is_today_leader(r, bench_today, margin=TODAY_OUTPERFORMANCE_MARGIN):
     return today_pct >= bench_today + margin
 
 
-def _fmt_pct(value):
-    return 'N/A' if value is None else f"{value:+.2f}%"
+# ── Regime Detection (4 levels) + SMH bounce ─────────────────────────
 
+def get_regime():
+    regime_score = 0
+    components = {}
+    smh_bounce = {'bounce': False, 'drawdown': 0, 'recovery': 0}
 
-def _fmt_dollar_volume(value):
-    if value is None:
-        return 'N/A'
-    if value >= 1e9:
-        return f"${value / 1e9:.2f}B"
-    if value >= 1e6:
-        return f"${value / 1e6:.1f}M"
-    return f"${value:,.0f}"
-
-
-def calc_composite(d):
-    def clamp(value, low, high):
-        return max(low, min(value, high))
-
-    # Bound raw returns so squeeze-like moves do not dominate the table.
-    p3 = clamp(d['3D %'], -8, 12)
-    p5 = clamp(d['5D %'], -10, 25)
-    p15 = clamp(d['15D %'], -15, 45)
-    abs_mom = p3 * 3.0 + p5 * 2.0 + p15 * 1.0
-
-    # Relative outperformance is helpful, but it should be capped as a bonus.
-    rel_vs = clamp((d['5D vs'] + d['15D vs']) / 2, 0, 40)
-    sc = abs_mom + rel_vs * 0.6
-
-    # Acceleration: stocks gaining speed get a measured boost.
-    if d['Acceleration']:
-        sc *= 1.15
-
-    # Breakout: near 20-day high with volume.
-    if d.get('Breakout'):
-        sc *= 1.08
-
-    # Penalize names that are fading or badly overextended.
-    if d['3D %'] <= 0:
-        sc *= 0.55
-    elif d['3D %'] < 2:
-        sc *= 0.85
-
-    if d['5D %'] > 35:
-        sc *= 0.85
-    if d['5D %'] > 50:
-        sc *= 0.8
-    if d['15D %'] > 80:
-        sc *= 0.8
-    if d['15D %'] > max(d['5D %'], 1) * 4:
-        sc *= 0.75
-    if not d.get('Acceleration') and d['5D %'] > 25:
-        sc *= 0.75
-    if not d.get('Near High') and d['15D %'] > 80:
-        sc *= 0.7
-
-    return round(sc, 2)
-
-# -- Market Analysis ---------------------------------------------------
-
-def get_market():
-    vix = fng = spy = None
-    smh = {'bounce': False, 'drawdown': 0, 'recovery': 0}
-
+    # 1. SPY vs 200MA (+35) and 200MA slope (+15)
+    spy_hist = None
     try:
-        h = yf.Ticker('^VIX').history(period="5d")
-        v = round(float(h['Close'].iloc[-1]), 2)
-        level = ("LOW" if v < 15 else "NORMAL" if v < 20 else
-                 "ELEVATED" if v < 25 else "HIGH" if v < 30 else "EXTREME")
-        vix = {'value': v, 'level': level}
+        spy_hist = yf.Ticker('SPY').history(period="2y")
+        if len(spy_hist) >= 200:
+            spy_price = float(spy_hist['Close'].iloc[-1])
+            ma200 = float(spy_hist['Close'].rolling(200).mean().iloc[-1])
+            ma200_prev = float(spy_hist['Close'].rolling(200).mean().iloc[-21])
+            above_200 = spy_price > ma200
+            ma200_rising = ma200 > ma200_prev
+            components['spy_price'] = round(spy_price, 2)
+            components['spy_ma200'] = round(ma200, 2)
+            components['spy_above_200'] = above_200
+            components['ma200_rising'] = ma200_rising
+            if above_200:
+                regime_score += 35
+            if ma200_rising:
+                regime_score += 15
     except Exception:
         pass
 
+    # 2. VIX level (+0 to +25)
     try:
-        r = requests.get('https://production.dataviz.cnn.io/index/fearandgreed/graphdata',
-                         headers={'User-Agent': 'Mozilla/5.0', 'Accept': '*/*',
-                                  'Origin': 'https://www.cnn.com', 'Referer': 'https://www.cnn.com/'},
-                         timeout=15)
-        s = int(r.json()['fear_and_greed']['score'])
-        label = ("EXTREME FEAR" if s <= 20 else "FEAR" if s <= 40 else
-                 "NEUTRAL" if s <= 60 else "GREED" if s <= 80 else "EXTREME GREED")
-        fng = {'score': s, 'status': label}
+        vix_hist = yf.Ticker('^VIX').history(period="5d")
+        vix = round(float(vix_hist['Close'].iloc[-1]), 2)
+        components['vix'] = vix
+        vix_level = ("LOW" if vix < 15 else "NORMAL" if vix < 20 else
+                     "ELEVATED" if vix < 25 else "HIGH" if vix < 30 else "EXTREME")
+        components['vix_level'] = vix_level
+        if vix < 18:
+            regime_score += 25
+        elif vix < 22:
+            regime_score += 15
+        elif vix < 28:
+            regime_score += 5
     except Exception:
         pass
 
+    # 3. Fear & Greed (+0 to +15)
     try:
-        h = yf.Ticker('SPY').history(period="1y")
-        if len(h) >= 200:
-            p = float(h['Close'].iloc[-1])
-            ma = float(h['Close'].rolling(200).mean().iloc[-1])
-            spy = {'price': round(p, 2), 'ma200': round(ma, 2), 'above': p > ma}
+        r = requests.get(
+            'https://production.dataviz.cnn.io/index/fearandgreed/graphdata',
+            headers={'User-Agent': 'Mozilla/5.0', 'Accept': '*/*',
+                     'Origin': 'https://www.cnn.com',
+                     'Referer': 'https://www.cnn.com/'},
+            timeout=15)
+        fng = int(r.json()['fear_and_greed']['score'])
+        fng_label = ("EXTREME FEAR" if fng <= 20 else "FEAR" if fng <= 40 else
+                     "NEUTRAL" if fng <= 60 else "GREED" if fng <= 80 else "EXTREME GREED")
+        components['fng'] = fng
+        components['fng_label'] = fng_label
+        if fng > 60:
+            regime_score += 15
+        elif fng > 40:
+            regime_score += 10
+        elif fng > 25:
+            regime_score += 5
     except Exception:
         pass
 
+    # 4. SPY 50MA trend (+10)
+    try:
+        if spy_hist is not None and len(spy_hist) >= 70:
+            ma50 = float(spy_hist['Close'].rolling(50).mean().iloc[-1])
+            ma50_prev = float(spy_hist['Close'].rolling(50).mean().iloc[-21])
+            components['spy_ma50'] = round(ma50, 2)
+            components['ma50_rising'] = ma50 > ma50_prev
+            if ma50 > ma50_prev:
+                regime_score += 10
+    except Exception:
+        pass
+
+    # 5. SMH bounce detection
     try:
         h = yf.Ticker('SMH').history(period="6mo")
         if len(h) >= 50:
@@ -268,41 +243,266 @@ def get_market():
             p5 = float(h['Close'].iloc[-5])
             dd = round((high50 - cur) / high50 * 100, 2)
             rec = round((cur - p5) / p5 * 100, 2)
-            smh = {'bounce': dd > 15 and rec > 2, 'drawdown': dd, 'recovery': rec}
+            smh_bounce = {'bounce': dd > 15 and rec > 2, 'drawdown': dd, 'recovery': rec}
     except Exception:
         pass
 
-    signal = "SELL"
-    if spy and vix:
-        if spy['above'] and vix['value'] < 27:
-            signal = "BUY"
-        elif smh['bounce']:
-            signal = "BUY THE DIP"
+    regime_score = max(0, min(100, regime_score))
 
-    score = 50
-    if vix:
-        score += (15 if vix['value'] < 18 else 5 if vix['value'] < 22 else
-                  -15 if vix['value'] > 28 else -5 if vix['value'] > 25 else 0)
-    if spy and spy['above']:
-        score += 15
-    score = max(0, min(100, score))
-    label = "BULLISH" if score >= 70 else "BEARISH" if score < 50 else "NEUTRAL"
+    if regime_score >= 75:
+        level, alloc, label = 4, 100, "FULL RISK ON"
+    elif regime_score >= 55:
+        level, alloc, label = 3, 60, "MODERATE"
+    elif regime_score >= 35:
+        level, alloc, label = 2, 30, "CAUTIOUS"
+    else:
+        level, alloc, label = 1, 0, "RISK OFF"
 
-    return {'vix': vix, 'fng': fng, 'spy': spy, 'signal': signal,
-            'market_score': {'score': score, 'label': label}, 'smh_bounce': smh}
+    # SMH bounce can override RISK OFF → CAUTIOUS
+    if smh_bounce['bounce'] and level <= 1:
+        level, alloc, label = 2, 30, "CAUTIOUS (SMH DIP BUY)"
 
-# -- Unified Screener --------------------------------------------------
+    return {
+        'score': regime_score,
+        'level': level,
+        'allocation_pct': alloc,
+        'label': label,
+        'components': components,
+        'smh_bounce': smh_bounce,
+    }
 
-def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
-                 min_bars=15, ensure_ticker=None):
+
+# ── Ticker Scoring ────────────────────────────────────────────────────
+
+def score_ticker(ticker, close_df, vol_df, open_df):
+    if ticker not in close_df.columns:
+        return None
+
+    prices = close_df[ticker].dropna()
+    vols = (vol_df[ticker].dropna()
+            if ticker in vol_df.columns else pd.Series(dtype=float))
+
+    if len(prices) < 20:
+        return None
+
+    price = float(prices.iloc[-1])
+    if price <= 0:
+        return None
+
+    # ── Short-term (3D / 5D / 15D) ──
+    p3 = pct(prices, 3) or 0
+    p5 = pct(prices, 5) or 0
+    p15 = pct(prices, 15) or 0
+
+    # ── Moving Averages ──
+    ma20 = float(prices.tail(20).mean())
+    ma50 = float(prices.tail(50).mean()) if len(prices) >= 50 else None
+
+    ma200 = (float(prices.tail(200).mean())
+             if len(prices) >= 200 else None)
+
+    ma50_rising = False
+    if ma50 is not None and len(prices) >= 70:
+        ma50_prev = float(prices.iloc[:-20].tail(50).mean())
+        ma50_rising = ma50 > ma50_prev
+
+    above_200ma = price > ma200 if ma200 else False
+    above_ma20 = price > ma20
+
+    # ── Trend Quality: 50MA rising AND above 200MA ──
+    trend_quality = ma50_rising and above_200ma
+
+    # ── Entry Quality: distance above 50MA ──
+    extension_pct = round((price - ma50) / ma50 * 100, 2) if ma50 and ma50 > 0 else 0
+    overextended = extension_pct > OVEREXTENSION_PCT
+
+    # ── Trailing Stop: drawdown from recent peak ──
+    peak_window = min(len(prices), 126)
+    peak = float(prices.tail(peak_window).max())
+    drawdown_pct = round((price - peak) / peak * 100, 2) if peak > 0 else 0
+    stop_threshold = (TRAILING_STOP_LEVERAGED
+                      if is_leveraged(ticker) else TRAILING_STOP_STOCK)
+    stop_triggered = drawdown_pct <= -stop_threshold
+
+    # ── Acceleration: 3D pace > 5D pace and 3D > 1% ──
+    rate3 = (p3 / 3) if p3 > 0 else 0
+    rate5 = (p5 / 5) if p5 > 0 else 0
+    acceleration = rate3 > rate5 and p3 > 1.0
+
+    # ── Volume ──
+    avg20_vol = float(vols.tail(20).mean()) if len(vols) >= 20 else 0
+    avg5_vol = float(vols.tail(5).mean()) if len(vols) >= 5 else 0
+    vol_surge = round(avg5_vol / avg20_vol, 2) if avg20_vol > 0 else 1.0
+    dollar_volume = price * avg20_vol
+
+    # ── Breakout: within 2% of recent high with volume ──
+    near_high = ((peak - price) / peak < 0.02) if peak > 0 else False
+    high20 = float(prices.tail(20).max())
+    near_high_20 = ((high20 - price) / high20 < 0.02) if high20 > 0 else False
+    breakout = near_high and vol_surge > 1.0
+
+    # ── Today %: prev_close → close (standard, matches benchmark) ──
+    today_pct = None
+    if len(prices) >= 2:
+        prev_close = float(prices.iloc[-2])
+        if prev_close > 0:
+            today_pct = round((price / prev_close - 1) * 100, 2)
+
+    return {
+        'Ticker': ticker,
+        'Price': round(price, 2),
+        'Today %': today_pct,
+        '3D %': p3,
+        '5D %': p5,
+        '15D %': p15,
+        'MA20': round(ma20, 2),
+        'MA50': round(ma50, 2) if ma50 else None,
+        'MA200': round(ma200, 2) if ma200 else None,
+        'MA50 Rising': ma50_rising,
+        'Above 200MA': above_200ma,
+        'Above MA20': above_ma20,
+        'Trend Quality': trend_quality,
+        'Extension %': extension_pct,
+        'Overextended': overextended,
+        'Drawdown %': drawdown_pct,
+        'Stop Triggered': stop_triggered,
+        'Stop Threshold': stop_threshold,
+        'Vol Surge': vol_surge,
+        'Acceleration': acceleration,
+        'Breakout': breakout,
+        'Near High': near_high_20,
+        'Dollar Volume': dollar_volume,
+        'Leveraged': is_leveraged(ticker),
+    }
+
+
+def calc_composite(r, bench):
+    """Composite score: 3D×3 + 5D×2 + 15D×1, with multipliers and penalties."""
+    def clamp(x):
+        return max(-500.0, min(500.0, x))
+
+    p3 = clamp(r.get('3D %', 0) or 0)
+    p5 = clamp(r.get('5D %', 0) or 0)
+    p15 = clamp(r.get('15D %', 0) or 0)
+    vs = r.get('Vol Surge', 1.0)
+
+    abs_mom = p3 * 3.0 + p5 * 2.0 + p15 * 1.0
+
+    rel_vs_5 = p5 - bench.get('perf_5d', 0)
+    rel_vs_15 = p15 - bench.get('perf_15d', 0)
+    if rel_vs_5 > 5:
+        abs_mom += rel_vs_5 * 1.5
+    if rel_vs_15 > 10:
+        abs_mom += rel_vs_15 * 0.8
+
+    # Trend quality multiplier
+    if r.get('Trend Quality'):
+        abs_mom *= 1.20
+    elif r.get('Above 200MA'):
+        abs_mom *= 1.05
+    elif r.get('MA50 Rising'):
+        abs_mom *= 0.90
+    else:
+        abs_mom *= 0.60
+
+    if r.get('Acceleration'):
+        abs_mom *= 1.15
+    if r.get('Breakout'):
+        abs_mom *= 1.08
+    if vs > 1.5:
+        abs_mom *= 1.08
+
+    # ── Multi-level overextension penalties ──
+    if r.get('Overextended'):
+        ext = r.get('Extension %', 0)
+        penalty = max(0.70, 1.0 - (ext - OVEREXTENSION_PCT) / 100)
+        abs_mom *= penalty
+    if p5 > 35:
+        abs_mom *= 0.85
+    if p5 > 50:
+        abs_mom *= 0.80
+    if p15 > 80:
+        abs_mom *= 0.80
+    if p15 > max(p5, 1) * 4:
+        abs_mom *= 0.75
+    if not r.get('Acceleration') and p5 > 25:
+        abs_mom *= 0.75
+    if not r.get('Near High') and p15 > 80:
+        abs_mom *= 0.70
+
+    # Fading penalty
+    if p3 <= 0:
+        abs_mom *= 0.55
+    elif p3 < 2:
+        abs_mom *= 0.85
+
+    # Trailing stop already triggered
+    if r.get('Stop Triggered'):
+        abs_mom *= 0.15
+
+    return round(abs_mom, 2)
+
+
+# ── Signal / Grade System ─────────────────────────────────────────────
+
+def _signal(r, freq, rank, total, is_ref=False):
+    if is_ref:
+        return 'SELL'
+    score = r.get('Score', 0)
+    vs = r.get('Vol Surge', 1.0)
+    acc = r.get('Acceleration', False)
+    brk = r.get('Breakout', False)
+    p3 = r.get('3D %', 0)
+    if score <= 0:
+        return 'SELL'
+    top_half = rank <= max(total // 2, 1)
+    has_momentum = vs > 1.3 or acc
+    if score > 100 and has_momentum and freq >= 2:
+        return 'STRONG BUY'
+    if score > 100 and brk and freq >= 2:
+        return 'STRONG BUY'
+    if top_half and has_momentum and freq >= 2:
+        return 'BUY'
+    if top_half and freq >= 3:
+        return 'BUY'
+    if score > 50 and has_momentum:
+        return 'BUY'
+    if score > 50 and brk:
+        return 'BUY'
+    if p3 > 3 and vs > 1.5:
+        return 'BUY'
+    return 'HOLD'
+
+
+def _grade(r, freq, rank, total, is_ref=False):
+    hits = 0
+    score = r.get('Score', 0)
+    vs = r.get('Vol Surge', 1.0)
+    acc = r.get('Acceleration', False)
+    brk = r.get('Breakout', False)
+    sig = _signal(r, freq, rank, total, is_ref)
+    if score > 30:
+        hits += 1
+    if vs > 1.3 or acc or brk:
+        hits += 1
+    if freq >= 2:
+        hits += 1
+    if 'BUY' in sig:
+        hits += 1
+    return hits
+
+
+# ── Screener ──────────────────────────────────────────────────────────
+
+def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
+                 dl_limit=200, top_n=15, ensure_ticker=None):
     print(f"\n[{name}]")
     bench = bench_perf(bench_ticker)
     print(
-        f"   {bench_ticker} - Today: {_fmt_pct(bench['perf_today'])} | "
+        f"   {bench_ticker} - Today: {fmt_pct(bench['perf_today'])} | "
         f"5D: {bench['perf_5d']:+.2f}% | 15D: {bench['perf_15d']:+.2f}%"
     )
 
-    # Merge tickers from multiple Finviz sources
     if isinstance(finviz_urls, str):
         finviz_urls = [finviz_urls]
     all_tickers = []
@@ -312,40 +512,45 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
             if t not in seen:
                 seen.add(t)
                 all_tickers.append(t)
-    print(f"   Found {len(all_tickers)} unique tickers from {len(finviz_urls)} source(s)")
+    print(f"   Found {len(all_tickers)} unique tickers "
+          f"from {len(finviz_urls)} source(s)")
 
-    dl = list(set(all_tickers[:dl_limit]) | ({ensure_ticker} if ensure_ticker else set()))
-    print(f"   Downloading {len(dl)}...")
-    close_df, vol_df, open_df = bulk_download(dl)
+    dl = list(set(all_tickers[:dl_limit]) |
+              ({ensure_ticker} if ensure_ticker else set()))
+    print(f"   Downloading {len(dl)} tickers (period=1y)...")
+    close_df, vol_df, open_df = bulk_download(dl, period="1y")
 
     results, ref_data = [], None
     total = len(dl)
 
     for i, t in enumerate(dl):
-        sys.stdout.write(f"\r   Scoring {i+1}/{total}" + " " * 30)
+        sys.stdout.write(f"\r   Scoring {i+1}/{total}  " + " " * 20)
         sys.stdout.flush()
-        d = score_ticker(t, close_df, vol_df, open_df, min_bars)
+        d = score_ticker(t, close_df, vol_df, open_df)
         if d is None:
             continue
 
-        d['Today vs'] = round(d['Today %'] - bench['perf_today'], 2) if d.get('Today %') is not None and bench['perf_today'] is not None else None
+        d['Score'] = calc_composite(d, bench)
+
+        # Benchmark comparison
+        d['Today vs'] = (round(d['Today %'] - bench['perf_today'], 2)
+                         if d.get('Today %') is not None
+                         and bench['perf_today'] is not None else None)
         d['5D vs'] = round(d['5D %'] - bench['perf_5d'], 2)
         d['15D vs'] = round(d['15D %'] - bench['perf_15d'], 2)
 
-        # Always compute ensure_ticker as reference
+        # Reference ticker
         if t == ensure_ticker:
-            d['Composite Score'] = calc_composite(d)
             ref_data = dict(d)
 
         if d['Dollar Volume'] < min_dv:
             continue
-        # Must be above at least MA20 (allow early breakouts without MA50)
-        if not d['Above MA20'] and t != ensure_ticker:
+        if not d.get('Above MA20') and t != ensure_ticker:
             continue
-        # ABSOLUTE PERFORMANCE GATE: must actually be going up
         if d['3D %'] <= 0 and d['5D %'] <= 0 and t != ensure_ticker:
             continue
-        # Stocks must clearly lead SOXL today and keep leading on 5D/15D.
+
+        # Benchmark gate
         if 'STOCK' in name:
             beats_bench = (
                 _is_today_leader(d, bench['perf_today'])
@@ -353,33 +558,37 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv, dl_limit, top_n,
                 and d['15D %'] > bench['perf_15d']
             )
         else:
-            beats_bench = d['5D %'] > bench['perf_5d'] or d['15D %'] > bench['perf_15d']
+            beats_bench = (d['5D %'] > bench['perf_5d']
+                           or d['15D %'] > bench['perf_15d'])
+
         if beats_bench:
-            d['Composite Score'] = calc_composite(d)
             results.append(d)
 
     # Clear progress line
     sys.stdout.write("\r" + " " * 50 + "\r")
     sys.stdout.flush()
 
-    # Enrich names after scoring loop (avoids noisy API calls breaking progress)
+    # Enrich names AFTER scoring (avoids noisy API calls in progress loop)
     sys.stdout.write(f"   Enriching names for {len(results)} tickers...")
     sys.stdout.flush()
     for d in results:
-        enrich(d, d['Ticker'])
+        d['Name'] = enrich_name(d['Ticker'])
     if ref_data:
-        enrich(ref_data, ref_data['Ticker'])
+        ref_data['Name'] = enrich_name(ref_data['Ticker'])
     sys.stdout.write(f"\r   {len(results)} passed filters" + " " * 20 + "\n")
     sys.stdout.flush()
 
-    if ensure_ticker and ref_data and not any(r['Ticker'] == ensure_ticker for r in results):
+    if (ensure_ticker and ref_data
+            and not any(r['Ticker'] == ensure_ticker for r in results)):
         ref_data['_reference'] = True
         results.append(ref_data)
 
-    results.sort(key=lambda x: x.get('Composite Score', 0), reverse=True)
+    # Sort by Dollar Volume (descending) — user requested $vol sort
+    results.sort(key=lambda x: x.get('Dollar Volume', 0), reverse=True)
     return results[:top_n], bench
 
-# -- History ------------------------------------------------------------
+
+# ── History ───────────────────────────────────────────────────────────
 
 def save_history(stocks, etfs=None):
     os.makedirs(HISTORY_DIR, exist_ok=True)
@@ -420,7 +629,33 @@ def freq_count(history, key='stocks'):
             c[item['Ticker']] += 1
     return c
 
-# -- HTML Generation ----------------------------------------------------
+
+# ── Rebalance ─────────────────────────────────────────────────────────
+
+def check_rebalance(regime_level):
+    today = datetime.now().date()
+    if os.path.exists(REBALANCE_FILE):
+        with open(REBALANCE_FILE) as f:
+            data = json.load(f)
+        last = datetime.strptime(data['date'], '%Y-%m-%d').date()
+        days_since = (today - last).days
+        prev_level = data.get('regime_level', regime_level)
+        regime_drop = prev_level - regime_level
+        forced = regime_drop >= 2
+        return {'last': str(last), 'days_since': days_since,
+                'due': days_since >= 28 or forced,
+                'forced': forced, 'regime_drop': regime_drop}
+    return {'last': 'Never', 'days_since': 999, 'due': True,
+            'forced': False, 'regime_drop': 0}
+
+
+def save_rebalance(regime_level):
+    with open(REBALANCE_FILE, 'w') as f:
+        json.dump({'date': datetime.now().strftime('%Y-%m-%d'),
+                   'regime_level': regime_level}, f)
+
+
+# ── CSS ───────────────────────────────────────────────────────────────
 
 CSS = """* { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#0d1117; color:#c9d1d9; min-height:100vh; padding:2rem; }
@@ -429,19 +664,20 @@ h1 { font-size:1.5rem; margin-bottom:.5rem; color:#58a6ff; }
 h2 { font-size:1.1rem; margin:1.5rem 0 .5rem; color:#8b949e; border-bottom:1px solid #30363d; padding-bottom:.5rem; }
 h2.tp { color:#f0c040; border-bottom:2px solid #f0c040; font-size:1.3rem; }
 .date { color:#8b949e; font-size:.875rem; margin-bottom:2rem; }
-.sig { font-size:3rem; font-weight:bold; margin:1rem 0; padding:1rem 2rem; border-radius:.5rem; display:inline-block; }
+.sig { font-size:2.5rem; font-weight:bold; margin:1rem 0; padding:1rem 2rem; border-radius:.5rem; display:inline-block; }
 .sig.buy { background:#238636; color:#fff; }
 .sig.sell { background:#da3633; color:#fff; }
-.metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:2rem; }
+.sig.cautious { background:#d29922; color:#fff; }
+.metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1rem; margin-bottom:2rem; }
 .m { background:#161b22; padding:1rem; border-radius:.5rem; }
 .ml { color:#8b949e; font-size:.75rem; margin-bottom:.25rem; }
 .mv { font-size:1.25rem; font-weight:600; }
 .ms { font-size:.75rem; margin-top:.25rem; }
 .sf { color:#f85149; } .sg { color:#3fb950; } .sn { color:#d29922; }
 table { width:100%; border-collapse:collapse; margin-bottom:1rem; }
-th,td { text-align:left; padding:.75rem; border-bottom:1px solid #30363d; }
+th,td { text-align:left; padding:.5rem .75rem; border-bottom:1px solid #30363d; }
 th { color:#8b949e; font-weight:500; font-size:.75rem; text-transform:uppercase; }
-td { font-size:.9rem; } tr:hover { background:#161b22; }
+td { font-size:.85rem; } tr:hover { background:#161b22; }
 .bi { color:#8b949e; font-size:.875rem; margin-bottom:1rem; }
 .hi { color:#58a6ff; font-size:.875rem; margin-bottom:1rem; }
 tr.champ { background:linear-gradient(90deg,#1a2a1a 0%,#0d1117 100%); border-left:3px solid #f0c040; }
@@ -449,76 +685,23 @@ tr.champ td { font-weight:600; }
 .badge { display:inline-block; font-size:.65rem; padding:2px 6px; border-radius:3px; margin-left:4px; font-weight:700; vertical-align:middle; }
 .badge.g4 { background:#238636; color:#fff; }
 .badge.g3 { background:#1a6b2a; color:#ccc; }
-.badge.g2 { background:#30363d; color:#8b949e; }
-.tp-card { background:linear-gradient(135deg,#1a2a1a,#161b22); border:1px solid #f0c040; border-radius:.5rem; padding:1rem 1.5rem; margin-bottom:.75rem; display:flex; justify-content:space-between; align-items:center; }
+.dim { opacity:.5; }
+.tp-card { background:linear-gradient(135deg,#1a2a1a,#161b22); border:1px solid #f0c040; border-radius:.5rem; padding:1rem 1.5rem; margin-bottom:.75rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.5rem; }
 .tp-card .tk { font-size:1.3rem; font-weight:700; color:#f0c040; }
 .tp-card .nm { color:#8b949e; font-size:.85rem; }
-.tp-card .st { display:flex; gap:1.5rem; align-items:center; }
+.tp-card .st { display:flex; gap:1.5rem; align-items:center; flex-wrap:wrap; }
 .tp-card .st div { text-align:center; }
 .tp-card .st .lbl { font-size:.65rem; color:#8b949e; text-transform:uppercase; }
 .tp-card .st .val { font-size:1rem; font-weight:600; }
-.dim { opacity:.5; }
-.none-msg { color:#8b949e; font-style:italic; padding:1rem 0; }"""
+.regime-bar { background:#161b22; border-radius:.25rem; height:1.5rem; margin:.5rem 0; position:relative; }
+.regime-fill { height:100%; border-radius:.25rem; }"""
 
 
-def _signal(r, freq, rank, total, is_ref=False):
-    """Determine BUY/SELL/HOLD action for a screened ticker."""
-    if is_ref:
-        return 'SELL'
-    score = r.get('Composite Score', 0)
-    vs = r.get('Vol Surge', 1.0)
-    acc = r.get('Acceleration', False)
-    brk = r.get('Breakout', False)
-    p3 = r.get('3D %', 0)
-    if score <= 0:
-        return 'SELL'
-    # Strong conviction: high score + momentum confirmation
-    top_half = rank <= max(total // 2, 1)
-    has_momentum = vs > 1.3 or acc
-    # STRONG BUY conditions
-    if score > 100 and has_momentum and freq >= 2:
-        return 'STRONG BUY'
-    if score > 100 and brk and freq >= 2:
-        return 'STRONG BUY'
-    # BUY conditions
-    if top_half and has_momentum and freq >= 2:
-        return 'BUY'
-    if top_half and freq >= 3:
-        return 'BUY'
-    if score > 50 and has_momentum:
-        return 'BUY'
-    if score > 50 and brk:
-        return 'BUY'
-    if p3 > 3 and vs > 1.5:
-        return 'BUY'
-    return 'HOLD'
-
-
-def _grade(r, freq, rank, total, is_ref=False):
-    """Return how many of the 4 criteria are strong: Score, Vol/Acc, Freq, Action."""
-    hits = 0
-    score = r.get('Composite Score', 0)
-    vs = r.get('Vol Surge', 1.0)
-    acc = r.get('Acceleration', False)
-    brk = r.get('Breakout', False)
-    sig = _signal(r, freq, rank, total, is_ref)
-    # 1) Score: strong composite
-    if score > 30:
-        hits += 1
-    # 2) Vol/Acc: volume surge, acceleration, or breakout
-    if vs > 1.3 or acc or brk:
-        hits += 1
-    # 3) Freq: appeared 2+ times in history (more realistic)
-    if freq >= 2:
-        hits += 1
-    # 4) Action: BUY or STRONG BUY
-    if 'BUY' in sig:
-        hits += 1
-    return hits
-
+# ── HTML Helpers ──────────────────────────────────────────────────────
 
 def _sig_html(sig):
-    colors = {'STRONG BUY': '#00ff7f', 'BUY': '#3fb950', 'SELL': '#f85149', 'HOLD': '#d29922'}
+    colors = {'STRONG BUY': '#00ff7f', 'BUY': '#3fb950',
+              'SELL': '#f85149', 'HOLD': '#d29922'}
     c = colors.get(sig, '#d29922')
     return f"<span style='color:{c};font-weight:bold'>{sig}</span>"
 
@@ -531,13 +714,14 @@ def _grade_badge(hits):
     return ""
 
 
-def _row(i, r, freq, total, is_ref=False, is_etf=False):
+def _html_row(i, r, freq, total, is_ref=False):
     vs = r.get('Vol Surge', 1.0)
-    vs_s = f"<span style='color:#3fb950'>&#x2191;{vs:.1f}x</span>" if vs > 1.3 else f"{vs:.1f}x"
+    vs_s = (f"<span style='color:#3fb950'>&#x2191;{vs:.1f}x</span>"
+            if vs > 1.3 else f"{vs:.1f}x")
     acc = "&#x1F525;" if r.get('Acceleration') else ""
     brk = "&#x1F4C8;" if r.get('Breakout') else ""
-    lev = ""
-    ref = " <span style='color:#8b949e;font-size:.75rem'>(ref)</span>" if is_ref else ""
+    ref = (" <span style='color:#8b949e;font-size:.75rem'>(ref)</span>"
+           if is_ref else "")
     sig = _signal(r, freq, i, total, is_ref)
     hits = _grade(r, freq, i, total, is_ref)
     badge = _grade_badge(hits)
@@ -549,67 +733,119 @@ def _row(i, r, freq, total, is_ref=False, is_etf=False):
         cls = " class='dim'"
     else:
         cls = ""
-    return (f"<tr{cls}><td>{i}</td><td>{lev}{r['Ticker']}{ref}{badge}</td>"
+    return (f"<tr{cls}><td>{i}</td><td>{r['Ticker']}{ref}{badge}</td>"
             f"<td>{r.get('Name', r['Ticker'])[:25]}</td>"
-            f"<td>{_fmt_pct(r.get('Today %'))}</td><td>{_fmt_dollar_volume(r.get('Dollar Volume'))}</td><td>{r.get('Composite Score', 0):.0f}</td>"
-            f"<td>{vs_s} {acc}{brk}</td><td>{freq}/{MAX_HISTORY}</td>"
+            f"<td>{fmt_pct(r.get('Today %'))}</td>"
+            f"<td>{fmt_dollar_volume(r.get('Dollar Volume'))}</td>"
+            f"<td>{r.get('Score', 0):.0f}</td>"
+            f"<td>{vs_s} {acc}{brk}</td>"
+            f"<td>{freq}/{MAX_HISTORY}</td>"
             f"<td>{_sig_html(sig)}</td></tr>")
 
 
-def _table(rows_html):
-    hdr = ''.join(f'<th>{h}</th>' for h in ['#', 'Ticker', 'Name', 'Today', 'Dollar Vol', 'Score', 'Vol/Acc', 'Freq', 'Action'])
-    return f"<table><thead><tr>{hdr}</tr></thead><tbody>{rows_html}</tbody></table>"
+def _html_table(rows_html):
+    hdr = ''.join(f'<th>{h}</th>' for h in
+                  ['#', 'Ticker', 'Name', 'Today', '$Vol', 'Score',
+                   'Vol/Acc', 'Freq', 'Action'])
+    return (f"<table><thead><tr>{hdr}</tr></thead>"
+            f"<tbody>{rows_html}</tbody></table>")
 
 
-def _top_pick_card(r, freq, rank, total):
-    """Generate a highlighted card for a top pick (4/4 criteria)."""
+def _html_top_card(r, freq, rank, total):
     vs = r.get('Vol Surge', 1.0)
     vs_s = f"&#x2191;{vs:.1f}x" if vs > 1.3 else f"{vs:.1f}x"
     acc_s = " &#x1F525;" if r.get('Acceleration') else ""
     brk_s = " &#x1F4C8;" if r.get('Breakout') else ""
     sig = _signal(r, freq, rank, total)
-    sc = r.get('Composite Score', 0)
+    sc = r.get('Score', 0)
     sig_color = '#00ff7f' if 'STRONG' in sig else '#3fb950'
-    return (f"<div class='tp-card'>"
-            f"<div><span class='tk'>&#x2B50; {r['Ticker']}</span>"
-            f"<span class='nm'> &mdash; {r.get('Name', r['Ticker'])[:30]}</span></div>"
-            f"<div class='st'>"
-            f"<div><div class='lbl'>Today</div><div class='val' style='color:#3fb950'>{_fmt_pct(r.get('Today %'))}</div></div>"
-            f"<div><div class='lbl'>Dollar Vol</div><div class='val'>{_fmt_dollar_volume(r.get('Dollar Volume'))}</div></div>"
-            f"<div><div class='lbl'>Score</div><div class='val' style='color:#3fb950'>{sc:.0f}</div></div>"
-            f"<div><div class='lbl'>Vol/Acc</div><div class='val' style='color:#3fb950'>{vs_s}{acc_s}{brk_s}</div></div>"
-            f"<div><div class='lbl'>Freq</div><div class='val' style='color:#3fb950'>{freq}/{MAX_HISTORY}</div></div>"
-            f"<div><div class='lbl'>Action</div><div class='val' style='color:{sig_color}'>{sig}</div></div>"
-            f"</div></div>")
+    return (
+        f"<div class='tp-card'>"
+        f"<div><span class='tk'>&#x2B50; {r['Ticker']}</span>"
+        f"<span class='nm'> &mdash; {r.get('Name', r['Ticker'])[:30]}</span></div>"
+        f"<div class='st'>"
+        f"<div><div class='lbl'>Today</div><div class='val' style='color:#3fb950'>{fmt_pct(r.get('Today %'))}</div></div>"
+        f"<div><div class='lbl'>$Vol</div><div class='val'>{fmt_dollar_volume(r.get('Dollar Volume'))}</div></div>"
+        f"<div><div class='lbl'>Score</div><div class='val' style='color:#3fb950'>{sc:.0f}</div></div>"
+        f"<div><div class='lbl'>Vol/Acc</div><div class='val' style='color:#3fb950'>{vs_s}{acc_s}{brk_s}</div></div>"
+        f"<div><div class='lbl'>Freq</div><div class='val' style='color:#3fb950'>{freq}/{MAX_HISTORY}</div></div>"
+        f"<div><div class='lbl'>Action</div><div class='val' style='color:{sig_color}'>{sig}</div></div>"
+        f"</div></div>"
+    )
 
 
-def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
+def generate_html(regime, stocks, sb, etfs, eb, sf, ef, sh, eh):
     now = f"{datetime.now():%Y-%m-%d %H:%M}"
-    v, fg, sp = mkt['vix'], mkt['fng'], mkt['spy']
-    ms, sig, smh = mkt['market_score'], mkt['signal'], mkt['smh_bounce']
+    c = regime['components']
+    smh = regime.get('smh_bounce', {})
 
-    sig_cls = 'buy' if 'BUY' in sig else 'sell'
-    ms_cls = 'sg' if ms['score'] >= 70 else 'sf' if ms['score'] < 50 else 'sn'
-    fg_cls = ('sf' if fg and fg['score'] <= 40 else 'sg' if fg and fg['score'] >= 60 else 'sn')
-    smh_h = (f"<p style='color:#f0883e;font-weight:bold'>&#x26A0; SMH BOUNCE "
-             f"(DD:{smh['drawdown']:.1f}% Rec:{smh['recovery']:.1f}%)</p>") if smh['bounce'] else ""
+    alloc = regime['allocation_pct']
+    regime_cls = ('buy' if alloc >= 60 else
+                  'cautious' if alloc >= 30 else 'sell')
+    smh_h = (
+        f"<p style='color:#f0883e;font-weight:bold'>&#x26A0; SMH BOUNCE "
+        f"(DD:{smh['drawdown']:.1f}% Rec:{smh['recovery']:.1f}%)</p>"
+    ) if smh.get('bounce') else ""
 
-    e_rows = "".join(_row(i+1, r, ef.get(r['Ticker'], 0), len(etfs), r.get('_reference'), True) for i, r in enumerate(etfs))
-    stocks_by_dvol = sorted(stocks, key=lambda x: x.get('Dollar Volume') or 0, reverse=True)
-    s_rows = "".join(_row(i+1, r, sf.get(r['Ticker'], 0), len(stocks_by_dvol)) for i, r in enumerate(stocks_by_dvol))
+    vix_val = c.get('vix', 'N/A')
+    vix_lvl = c.get('vix_level', '')
+    fng_val = c.get('fng', 'N/A')
+    fng_lbl = c.get('fng_label', '')
+    spy_p = c.get('spy_price', 'N/A')
+    spy_ma = c.get('spy_ma200', 'N/A')
+    spy_above = c.get('spy_above_200', False)
+    fng_cls = ('sf' if isinstance(fng_val, int) and fng_val <= 40
+               else 'sg' if isinstance(fng_val, int) and fng_val >= 60 else 'sn')
 
-    # History score ranking — best snapshot per ticker, sorted by Dollar Volume
-    stock_best = {}
-    for day in sh:
-        for s in day.get('stocks', []):
-            t = s['Ticker']
-            if t not in stock_best or s.get('Composite Score', 0) > stock_best[t].get('Composite Score', 0):
-                stock_best[t] = s
-    h_sorted = sorted(stock_best.values(), key=lambda x: x.get('Dollar Volume') or 0, reverse=True) if stock_best else []
-    h_rows = "".join(
-        _row(i+1, s, sf.get(s['Ticker'], 0), len(h_sorted))
-        for i, s in enumerate(h_sorted)
-    ) if h_sorted else ""
+    fill_color = ('#238636' if alloc >= 60 else
+                  '#d29922' if alloc >= 30 else '#da3633')
+    regime_bar = (
+        f"<div class='regime-bar'><div class='regime-fill' "
+        f"style='width:{alloc}%;background:{fill_color}'></div></div>"
+    )
+
+    e_rows = "".join(
+        _html_row(i+1, r, ef.get(r['Ticker'], 0), len(etfs),
+                  r.get('_reference'))
+        for i, r in enumerate(etfs))
+    s_rows = "".join(
+        _html_row(i+1, r, sf.get(r['Ticker'], 0), len(stocks),
+                  r.get('_reference'))
+        for i, r in enumerate(stocks))
+
+    # Top picks HTML
+    top_cards = ""
+    all_items = stocks + etfs
+    for i, r in enumerate(all_items):
+        if r.get('_reference'):
+            continue
+        f_val = (sf.get(r['Ticker'], 0) if i < len(stocks)
+                 else ef.get(r['Ticker'], 0))
+        hits = _grade(r, f_val, i + 1, len(all_items))
+        if hits >= 4 and _is_today_leader(r, sb.get('perf_today')):
+            top_cards += _html_top_card(r, f_val, i + 1, len(all_items))
+
+    top_section = ""
+    if top_cards:
+        top_section = (f"<h2 class='tp'>&#x2B50; Top Picks "
+                       f"(4/4 Criteria)</h2>{top_cards}")
+
+    # History ranking HTML
+    all_freqs = Counter()
+    all_freqs.update(sf)
+    all_freqs.update(ef)
+    hist_rows = ""
+    for rank, (ticker, cnt) in enumerate(all_freqs.most_common(20), 1):
+        hist_rows += (f"<tr><td>{rank}</td><td>{ticker}</td>"
+                      f"<td>{cnt}/{MAX_HISTORY}</td></tr>")
+    hist_section = ""
+    if hist_rows:
+        hist_section = (
+            f"<h2>Stock Score Ranking (Last {MAX_HISTORY} Days)</h2>"
+            f"<table><thead><tr><th>#</th><th>Ticker</th>"
+            f"<th>Freq</th></tr></thead>"
+            f"<tbody>{hist_rows}</tbody></table>"
+        )
 
     s_days = ", ".join(d['date'] for d in sh) or "None"
     e_days = ", ".join(d['date'] for d in eh) or "None"
@@ -617,402 +853,393 @@ def generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh):
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Market Analysis</title><style>{CSS}</style></head>
+<title>Unified Screener</title><style>{CSS}</style></head>
 <body><div class="c">
-<h1>Market Analysis</h1><p class="date">{now}</p>
-<div class="sig {sig_cls}">{sig}</div>
+<h1>Unified Screener</h1><p class="date">{now}</p>
+<div class="sig {regime_cls}">{regime['label']}</div>
 {smh_h}
+{regime_bar}
 <div class="metrics">
-<div class="m"><div class="ml">Market Score</div><div class="mv">{ms['score']}/100</div><div class="ms {ms_cls}">{ms['label']}</div></div>
-<div class="m"><div class="ml">VIX</div><div class="mv">{v['value'] if v else 'N/A'}</div><div class="ms">{v['level'] if v else 'N/A'}</div></div>
-<div class="m"><div class="ml">Fear &amp; Greed</div><div class="mv">{fg['score'] if fg else 'N/A'}</div><div class="ms {fg_cls}">{fg['status'] if fg else 'N/A'}</div></div>
-<div class="m"><div class="ml">SPY vs 200-MA</div><div class="mv">${sp['price'] if sp else 'N/A'}</div><div class="ms">{'ABOVE' if sp and sp['above'] else 'BELOW'} ${sp['ma200'] if sp else 'N/A'}</div></div>
+<div class="m"><div class="ml">Regime Score</div><div class="mv">{regime['score']}/100</div><div class="ms">{regime['label']}</div></div>
+<div class="m"><div class="ml">Allocation</div><div class="mv">{alloc}%</div><div class="ms">{MAX_POSITIONS} pos @ {POSITION_SIZE:.0f}%</div></div>
+<div class="m"><div class="ml">VIX</div><div class="mv">{vix_val}</div><div class="ms">{vix_lvl}</div></div>
+<div class="m"><div class="ml">Fear &amp; Greed</div><div class="mv">{fng_val}</div><div class="ms {fng_cls}">{fng_lbl}</div></div>
+<div class="m"><div class="ml">SPY vs 200MA</div><div class="mv">${spy_p}</div><div class="ms">{'ABOVE' if spy_above else 'BELOW'} ${spy_ma}</div></div>
+<div class="m"><div class="ml">Stops</div><div class="mv">{TRAILING_STOP_STOCK:.0f}%/{TRAILING_STOP_LEVERAGED:.0f}%</div><div class="ms">Stock / Leveraged</div></div>
 </div>
 
-<h2>ETF Screener (Beat QQQ)</h2>
-<p class="bi">QQQ: Today {_fmt_pct(eb['perf_today'])} | 5D {eb['perf_5d']:+.2f}% | 15D {eb['perf_15d']:+.2f}%</p>
+{top_section}
+
+<h2>Stock Screener (Beat SOXL) &mdash; Sorted by $Vol</h2>
+<p class="bi">SOXL: Today {fmt_pct(sb['perf_today'])} | 5D {sb['perf_5d']:+.2f}% | 15D {sb['perf_15d']:+.2f}%</p>
+<p class="hi">Filter: Today &gt; SOXL by {TODAY_OUTPERFORMANCE_MARGIN:.1f}% + 5D/15D beat  |  History: {s_days}</p>
+{_html_table(s_rows)}
+
+<h2>ETF Screener (Beat QQQ) &mdash; Sorted by $Vol</h2>
+<p class="bi">QQQ: Today {fmt_pct(eb['perf_today'])} | 5D {eb['perf_5d']:+.2f}% | 15D {eb['perf_15d']:+.2f}%</p>
 <p class="hi">History: {e_days}</p>
-{_table(e_rows)}
+{_html_table(e_rows)}
 
-<h2>Stock Screener (Beat SOXL)</h2>
-<p class="bi">SOXL: Today {_fmt_pct(sb['perf_today'])} | 5D {sb['perf_5d']:+.2f}% | 15D {sb['perf_15d']:+.2f}%</p>
-<p class="hi">Filter: Today &gt; SOXL by {TODAY_OUTPERFORMANCE_MARGIN:.1f}% and 5D/15D must also beat SOXL</p>
-<p class="hi">History: {s_days}</p>
-{_table(s_rows)}
+{hist_section}
 
-{('<h2>Stock Score Ranking</h2><p class="hi">All stocks ranked by latest composite score</p>' + _table(h_rows)) if h_rows else ''}
 </div></body></html>"""
 
-# -- Main ---------------------------------------------------------------
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--no-save-history', action='store_true')
-    args = parser.parse_args()
+# ── Console Output ────────────────────────────────────────────────────
 
-    print("=" * 50)
-    print("  MARKET SCREENER")
-    print("=" * 50)
+def print_regime(regime):
+    print(f"\n{SEP2}")
+    print(f"  MARKET REGIME: {regime['label']}  "
+          f"(Score: {regime['score']}/100)")
+    print(f"  Allocation: {regime['allocation_pct']}% of capital")
+    print(f"{SEP2}")
 
-    mkt = get_market()
-    print(f"   Score: {mkt['market_score']['score']}/100 | Signal: {mkt['signal']}")
+    c = regime['components']
+    if 'spy_price' in c:
+        status = "ABOVE" if c.get('spy_above_200') else "BELOW"
+        rising = "Rising" if c.get('ma200_rising') else "Falling"
+        print(f"  SPY:  ${c['spy_price']}  {status} 200MA "
+              f"(${c['spy_ma200']})  {rising}")
+    if 'spy_ma50' in c:
+        r50 = "Rising" if c.get('ma50_rising') else "Falling"
+        print(f"  SPY 50MA: ${c['spy_ma50']}  {r50}")
+    if 'vix' in c:
+        print(f"  VIX:  {c['vix']}  ({c.get('vix_level', '')})")
+    if 'fng' in c:
+        print(f"  Fear & Greed: {c['fng']}  ({c.get('fng_label', '')})")
 
-    etfs, eb = run_screener('ETF SCREENER', ETF_URL, 'QQQ', 50e6, 80, 10, ensure_ticker='SOXL')
-    stocks, sb = run_screener('STOCK SCREENER', [STOCK_URL, STOCK_URL2, STOCK_URL3],
-                              'SOXL', 30e6, 200, 15, min_bars=20)
+    smh = regime.get('smh_bounce', {})
+    if smh.get('bounce'):
+        print(f"  !! SMH BOUNCE  DD:{smh['drawdown']:.1f}% "
+              f"Recovery:{smh['recovery']:.1f}%")
 
-    if not args.no_save_history:
-        print("\n[SAVING HISTORY]")
-        save_history(stocks, etfs)
-
-    sh, eh = load_history()
-    sf, ef = freq_count(sh, 'stocks'), freq_count(eh, 'etfs')
-    print(f"   History: {len(sh)}d stocks, {len(eh)}d ETFs")
-
-    print("\n[GENERATING HTML]")
-    html = generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh)
-    out = os.path.join(ROOT, 'index.html')
-    with open(out, 'w') as f:
-        f.write(html)
-    print(f"   -> {out}\n[DONE]")
-
-
+    filled = regime['allocation_pct'] // 10
+    bars = "#" * filled + "." * (10 - filled)
+    print(f"  Risk Meter: [{bars}] {regime['allocation_pct']}%")
 
 
-# --- GEN_HTML.PY LOGIC ---
-#!/usr/bin/env python3
-"""Generate HTML from existing history files."""
-
-
-
-
-CSS = """body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#111;color:#eee;margin:0;padding:20px}a{color:#6cf}.c{max-width:1200px;margin:0 auto}.date{color:#888;font-size:14px}.sig{font-size:28px;font-weight:700;text-align:center;padding:15px;margin:20px 0;border-radius:8px}.sig.buy{background:#0a5}.sig.sell{background:#d33}.sig.neutral{background:#b85}metrics{display:flex;gap:15px;flex-wrap:wrap;margin:20px 0}.m{background:#222;padding:15px;border-radius:8px;min-width:120px}.ml{color:#888;font-size:12px}.mv{font-size:24px;font-weight:700}.ms{font-size:12px;padding:3px 8px;border-radius:4px;display:inline-block;margin-top:5px}.sg{background:#0a5;color:#fff}.sf{background:#d33;color:#fff}.sn{background:#b85;color:#fff}h2{color:#eee;margin:30px 0 10px;border-bottom:1px solid #333;padding-bottom:10px}.tp{color:#fb0}.hi{color:#888;font-size:14px}.none-msg{color:#888;font-style:italic;padding:20px}table{width:100%;border-collapse:collapse;margin:15px 0;font-size:13px}th,td{padding:8px;text-align:left;border-bottom:1px solid #333}th{color:#888;font-weight:500}.buy{color:#0a5}.sell{color:#d33}.hold{color:#b85}.t0{width:40px}.t1{width:70px}.t2{width:180px}.t3{width:70px}.t4{width:70px}.t5{width:60px}.t6{width:60px}.t7{width:50px}.t8{width:50px}.tp-card{background:#1a1a1a;padding:15px;border-radius:8px;margin:10px 0;border-left:4px solid #fb0}.tp-rank{font-size:20px;font-weight:700;color:#fb0;margin-right:10px}.tp-ticker{font-size:18px;font-weight:700;color:#fff;margin-right:10px}.tp-name{color:#888;font-size:14px}.tp-pct{font-size:24px;font-weight:700;margin:5px 0}.tp-vol{color:#666;font-size:12px}.tp-score{background:#222;padding:3px 10px;border-radius:4px;font-size:12px;margin-left:10px}.tp-action{font-weight:700;padding:3px 10px;border-radius:4px;margin-left:10px}.tp-action.buy{background:#0a5;color:#fff}.tp-action.strong-buy{background:#fb0;color:#000}.bi{font-weight:700;color:#fff}"""
-
-def gen_html_load_history():
-    files = sorted([f for f in os.listdir(HISTORY_DIR) if f.endswith('.json')])
-    stocks, etfs = [], []
-    for f in files[-10:]:
-        with open(os.path.join(HISTORY_DIR, f)) as fp:
-            d = json.load(fp)
-            stocks.extend(d.get('stocks', []))
-            etfs.extend(d.get('etfs', []))
-    return stocks, etfs
-
-def _fmt_pct(v):
-    return f"+{v:.2f}%" if v >= 0 else f"{v:.2f}%"
-
-def gen_html_main():
-    stocks, etfs = gen_html_load_history()
-    now = f"{datetime.now():%Y-%m-%d %H:%M}"
-    
-    # Sort by score
-    stocks.sort(key=lambda x: x.get('Composite Score', 0), reverse=True)
-    etfs.sort(key=lambda x: x.get('Composite Score', 0), reverse=True)
-    
-    s_rows = "".join(f"<tr><td class='t0'>{i+1}</td><td class='t1'><a href='#'>{r['Ticker']}</a></td><td class='t2'>{r.get('Name','')}</td><td class='t3'>{_fmt_pct(r.get('Today %',0))}</td><td class='t4'>{r.get('Volume',''):.0f}</td><td class='t5'>{r.get('Composite Score',0)}</td><td class='t6'>{r.get('Action','')}</td></tr>" for i, r in enumerate(stocks[:50]))
-    e_rows = "".join(f"<tr><td class='t0'>{i+1}</td><td class='t1'><a href='#'>{r['Ticker']}</a></td><td class='t2'>{r.get('Name','')}</td><td class='t3'>{_fmt_pct(r.get('Today %',0))}</td><td class='t4'>{r.get('Volume',''):.0f}</td><td class='t5'>{r.get('Composite Score',0)}</td><td class='t6'>{r.get('Action','')}</td></tr>" for i, r in enumerate(etfs[:30]))
-    
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Stock Screener History</title><style>{CSS}</style></head>
-<body><div class="c">
-<h1>Stock Screener</h1><p class="date">{now}</p>
-<h2>Top Stocks (by Composite Score)</h2>
-<table><tr><th>#</th><th>Ticker</th><th>Name</th><th>Today</th><th>Volume</th><th>Score</th><th>Action</th></tr>{s_rows}</table>
-<h2>Top ETFs (by Composite Score)</h2>
-<table><tr><th>#</th><th>Ticker</th><th>Name</th><th>Today</th><th>Volume</th><th>Score</th><th>Action</th></tr>{e_rows}</table>
-</div></body></html>"""
-    
-    with open(INDEX_HTML, 'w') as f:
-        f.write(html)
-    print(f"Generated {INDEX_HTML}")
-
-
-
-# --- RUN_ALL_CONSOLE.PY LOGIC ---
-#!/usr/bin/env python3
-"""Market screener runner — console output + HTML generation."""
-
-import argparse
-import os
-from collections import Counter
-from datetime import datetime
-
-
-SEP = "-" * 70
-
-
-def fmt_pct(value):
-    return "N/A" if value is None else f"{value:+.2f}%"
-
-
-def fmt_dollar_volume(value):
-    if value is None:
-        return "N/A"
-    if value >= 1e9:
-        return f"${value / 1e9:.2f}B"
-    if value >= 1e6:
-        return f"${value / 1e6:.1f}M"
-    return f"${value:,.0f}"
-
-
-def print_market(mkt):
-    """Print market metrics: VIX, Fear & Greed, SPY vs MA200, SMH bounce."""
-    v = mkt.get("vix")
-    fg = mkt.get("fng")
-    sp = mkt.get("spy")
-    ms = mkt["market_score"]
-    smh = mkt.get("smh_bounce", {})
-
-    print(f"\n{'=' * 70}")
-    print(f"  SIGNAL: {mkt['signal']}    |    Market Score: {ms['score']}/100 ({ms['label']})")
-    print(f"{'=' * 70}")
-
-    print(f"\n  VIX:           {v['value'] if v else 'N/A':<8} {v['level'] if v else ''}")
-    print(f"  Fear & Greed:  {fg['score'] if fg else 'N/A':<8} {fg['status'] if fg else ''}")
-    if sp:
-        above = "ABOVE" if sp["above"] else "BELOW"
-        print(f"  SPY:           ${sp['price']:<8} {above} MA200 (${sp['ma200']})")
+def print_rebalance_status(rb):
+    print(f"\n{SEP}")
+    if rb.get('forced'):
+        tag = f">>> FORCED (regime dropped {rb['regime_drop']} levels) <<<"
+    elif rb['due']:
+        tag = ">>> DUE NOW <<<"
     else:
-        print(f"  SPY:           N/A")
+        tag = "Not yet due"
+    print(f"  REBALANCE: {tag}")
+    print(f"  Last: {rb['last']}  |  Days since: {rb['days_since']}  "
+          f"|  Cadence: Monthly (~28d)")
+    print(f"{SEP}")
 
-    if smh.get("bounce"):
-        print(f"  !! SMH BOUNCE  DD:{smh['drawdown']:.1f}% Recovery:{smh['recovery']:.1f}%")
 
-
-def print_table(title, bench_ticker, bench, items, freqs, history_dates):
-    """Print a full table matching the HTML columns: #, Ticker, Name, Score, Vol/Acc, Freq, Action."""
+def print_table(title, results, bench_ticker, bench, freqs, history_dates):
     print(f"\n{SEP}")
     print(f"  {title}")
     print(f"{SEP}")
-    print(f"  {bench_ticker}: Today {fmt_pct(bench.get('perf_today'))} | 5D {bench['perf_5d']:+.2f}% | 15D {bench['perf_15d']:+.2f}%")
+    print(f"  {bench_ticker}: Today {fmt_pct(bench['perf_today'])} | "
+          f"5D {bench['perf_5d']:+.2f}% | 15D {bench['perf_15d']:+.2f}%")
     print(f"  History: {', '.join(history_dates) if history_dates else 'None'}")
     print()
 
-    if not items:
+    if not results:
         print("  No results")
         return
 
-    # Header
-    print(f"  {'#':>3}  {'Ticker':<7} {'Name':<25} {'Today':>8} {'$Vol':>10} {'Score':>6} {'Vol':>5} {'Flags':<6} {'Freq':>6} {'Action':<12}")
-    print(f"  {'---':>3}  {'------':<7} {'----':<25} {'-----':>8} {'----':>10} {'-----':>6} {'---':>5} {'-----':<6} {'----':>6} {'------':<12}")
+    hdr = (f"  {'#':>3}  {'Ticker':<7} {'Name':<22} {'$Vol':>10} "
+           f"{'Score':>7} {'Today':>7} {'3D':>7} {'5D':>7} {'15D':>7} "
+           f"{'Trend':>5} {'Vol':>5} {'Flags':<5} "
+           f"{'Freq':>6} {'Action':<12}")
+    div = (f"  {'---':>3}  {'------':<7} {'----':<22} {'--------':>10} "
+           f"{'-----':>7} {'-----':>7} {'-----':>7} {'-----':>7} {'-----':>7} "
+           f"{'-----':>5} {'---':>5} {'-----':<5} "
+           f"{'----':>6} {'------':<12}")
+    print(hdr)
+    print(div)
 
-    total = len(items)
-    for i, r in enumerate(items, start=1):
-        ticker = r.get("Ticker", "?")
-        name = r.get("Name", ticker)[:25]
-        today = fmt_pct(r.get("Today %"))
-        dollar_vol = fmt_dollar_volume(r.get("Dollar Volume"))
-        score = r.get("Composite Score", 0)
-        vs = r.get("Vol Surge", 1.0)
-        acc = "A" if r.get("Acceleration") else ""
-        brk = "B" if r.get("Breakout") else ""
-        flags = f"{acc}{brk}" or "-"
-        is_ref = r.get("_reference", False)
-        freq = freqs.get(ticker, 0)
+    total = len(results)
+    for i, r in enumerate(results, 1):
+        if r.get('Trend Quality'):
+            trend = " Y"
+        elif r.get('Above 200MA') or r.get('MA50 Rising'):
+            trend = " ~"
+        else:
+            trend = " N"
+        lev = "L" if r.get('Leveraged') else ""
+        acc = "A" if r.get('Acceleration') else ""
+        brk = "B" if r.get('Breakout') else ""
+        stop = "!" if r.get('Stop Triggered') else ""
+        flags = f"{acc}{brk}{stop}{lev}" or "-"
+
+        is_ref = r.get('_reference', False)
+        freq = freqs.get(r['Ticker'], 0)
         sig = _signal(r, freq, i, total, is_ref)
         hits = _grade(r, freq, i, total, is_ref)
         grade = f"[{hits}/4]" if hits >= 3 else ""
         ref_tag = " (ref)" if is_ref else ""
+        dvol = fmt_dollar_volume(r.get('Dollar Volume'))
 
-        vs_str = f"{vs:.1f}x"
         print(
-            f"  {i:>3}  {ticker:<7} {name:<25} {today:>8} {dollar_vol:>10} {score:>6.0f} {vs_str:>5} {flags:<6} "
+            f"  {i:>3}  {r['Ticker']:<7} {r.get('Name', r['Ticker'])[:22]:<22} "
+            f"{dvol:>10} "
+            f"{r.get('Score', 0):>7.1f} "
+            f"{fmt_pct(r.get('Today %')):>7} "
+            f"{fmt_pct(r.get('3D %')):>7} "
+            f"{fmt_pct(r.get('5D %')):>7} "
+            f"{fmt_pct(r.get('15D %')):>7} "
+            f"{trend:>5} {r.get('Vol Surge', 1.0):>4.1f}x {flags:<5} "
             f"{freq:>2}/{MAX_HISTORY:<3} {sig:<10} {grade}{ref_tag}"
         )
 
+        if i >= 25:
+            remaining = len(results) - 25
+            if remaining > 0:
+                print(f"  ... ({remaining} more)")
+            break
 
-def print_top_picks(stocks, etfs, sf, ef, sh, stock_bench):
-    """Print TOP PICKS: tickers with all 4 criteria strong."""
-    # Build history-ranked stocks
-    stock_map = {}
-    for day in sh:
-        for s in day.get("stocks", []):
-            stock_map[s["Ticker"]] = s
-    h_sorted = sorted(
-        stock_map.values(),
-        key=lambda x: x.get("Composite Score", 0),
-        reverse=True,
-    ) if stock_map else []
 
+def print_top_picks(stocks, etfs, sf, ef, stock_bench):
     all_candidates = []
 
-    # Stocks with 4/4
     for i, r in enumerate(stocks):
-        f = sf.get(r["Ticker"], 0)
-        hits = _grade(r, f, i + 1, len(stocks))
-        if hits >= 4 and _is_today_leader(r, stock_bench.get("perf_today")):
-            all_candidates.append((r, f, i + 1, hits))
-
-    # ETFs with 4/4
-    for i, r in enumerate(etfs):
-        if r.get("_reference"):
+        if r.get('_reference'):
             continue
-        f = ef.get(r["Ticker"], 0)
-        hits = _grade(r, f, i + 1, len(etfs))
-        if hits >= 4 and _is_today_leader(r, stock_bench.get("perf_today")):
+        f = sf.get(r['Ticker'], 0)
+        hits = _grade(r, f, i + 1, len(stocks))
+        if hits >= 4 and _is_today_leader(r, stock_bench.get('perf_today')):
             all_candidates.append((r, f, i + 1, hits))
 
-    # History stocks with 4/4
-    for i, s in enumerate(h_sorted):
-        f = sf.get(s["Ticker"], 0)
-        hits = _grade(s, f, i + 1, len(h_sorted))
-        if hits >= 4 and _is_today_leader(s, stock_bench.get("perf_today")) and not any(c[0]["Ticker"] == s["Ticker"] for c in all_candidates):
-            all_candidates.append((s, f, i + 1, hits))
+    for i, r in enumerate(etfs):
+        if r.get('_reference'):
+            continue
+        f = ef.get(r['Ticker'], 0)
+        hits = _grade(r, f, i + 1, len(etfs))
+        if hits >= 4 and _is_today_leader(r, stock_bench.get('perf_today')):
+            all_candidates.append((r, f, i + 1, hits))
 
-    # Fall back to 3/4 if no 4/4
     threshold = 4
     if not all_candidates:
         threshold = 3
         for i, r in enumerate(stocks):
-            f = sf.get(r["Ticker"], 0)
+            if r.get('_reference'):
+                continue
+            f = sf.get(r['Ticker'], 0)
             hits = _grade(r, f, i + 1, len(stocks))
-            if hits >= 3 and _is_today_leader(r, stock_bench.get("perf_today")):
+            if hits >= 3 and _is_today_leader(r, stock_bench.get('perf_today')):
                 all_candidates.append((r, f, i + 1, hits))
-        for i, s in enumerate(h_sorted):
-            f = sf.get(s["Ticker"], 0)
-            hits = _grade(s, f, i + 1, len(h_sorted))
-            if hits >= 3 and _is_today_leader(s, stock_bench.get("perf_today")) and not any(c[0]["Ticker"] == s["Ticker"] for c in all_candidates):
-                all_candidates.append((s, f, i + 1, hits))
 
-    all_candidates.sort(key=lambda x: x[0].get("Composite Score", 0), reverse=True)
+    # Sort top picks by Dollar Volume
+    all_candidates.sort(key=lambda x: x[0].get('Dollar Volume', 0),
+                        reverse=True)
 
-    print(f"\n{'=' * 70}")
-    print(f"  TOP PICKS -- All {threshold} Criteria Strong")
-    print(f"  Today > SOXL by {TODAY_OUTPERFORMANCE_MARGIN:.1f}% | 5D/15D beat SOXL | Vol Surge or Accel | Action = BUY")
-    print(f"{'=' * 70}")
+    print(f"\n{SEP2}")
+    print(f"  TOP PICKS -- All {threshold} Criteria Strong  (Sorted by $Vol)")
+    print(f"  Today > SOXL by {TODAY_OUTPERFORMANCE_MARGIN:.1f}% | "
+          f"Score + Vol/Acc + Freq + Action")
+    print(f"{SEP2}")
 
     if not all_candidates:
         print("  No top picks right now")
         return
 
     for r, freq, rank, hits in all_candidates[:5]:
-        ticker = r.get("Ticker", "?")
-        name = r.get("Name", ticker)[:30]
-        today = fmt_pct(r.get("Today %"))
-        dollar_vol = fmt_dollar_volume(r.get("Dollar Volume"))
-        score = r.get("Composite Score", 0)
-        vs = r.get("Vol Surge", 1.0)
-        acc = " Accel" if r.get("Acceleration") else ""
-        brk = " Breakout" if r.get("Breakout") else ""
+        ticker = r.get('Ticker', '?')
+        name = r.get('Name', ticker)[:30]
+        today = fmt_pct(r.get('Today %'))
+        dollar_vol = fmt_dollar_volume(r.get('Dollar Volume'))
+        score = r.get('Score', 0)
+        vs = r.get('Vol Surge', 1.0)
+        acc = " Accel" if r.get('Acceleration') else ""
+        brk = " Breakout" if r.get('Breakout') else ""
         sig = _signal(r, freq, rank, 999)
         print(
-            f"  >>> {ticker:<7} {name:<30} Today:{today:>8}  $Vol:{dollar_vol:>10}  Score:{score:>6.0f}  "
-            f"Vol:{vs:.1f}x{acc}{brk}  Freq:{freq}/{MAX_HISTORY}  Action:{sig}  [{hits}/4]"
+            f"  >>> {ticker:<7} {name:<30} Today:{today:>8}  "
+            f"$Vol:{dollar_vol:>10}  Score:{score:>6.0f}  "
+            f"Vol:{vs:.1f}x{acc}{brk}  Freq:{freq}/{MAX_HISTORY}  "
+            f"Action:{sig}  [{hits}/4]"
         )
 
 
-def print_history_ranking(sh, sf):
-    """Print Stock Score Ranking from history data."""
-    # Keep the best-score snapshot for each ticker, sorted by Dollar Volume
-    stock_best = {}
-    for day in sh:
-        for s in day.get("stocks", []):
-            t = s["Ticker"]
-            if t not in stock_best or s.get("Composite Score", 0) > stock_best[t].get("Composite Score", 0):
-                stock_best[t] = s
-    if not stock_best:
+def print_portfolio(stocks, etfs, regime):
+    alloc = regime['allocation_pct']
+
+    # Deduplicate by ticker (stocks take priority), then filter
+    seen_tickers = set()
+    combined = []
+    for r in stocks + etfs:
+        t = r.get('Ticker')
+        if t in seen_tickers:
+            continue
+        seen_tickers.add(t)
+        if not r.get('Stop Triggered') and r.get('Score', 0) > 0 and not r.get('_reference'):
+            combined.append(r)
+    candidates = combined
+    # Portfolio picks sorted by Dollar Volume too
+    candidates.sort(key=lambda x: x.get('Dollar Volume', 0), reverse=True)
+
+    quality = [r for r in candidates if r.get('Trend Quality')]
+    partial = [r for r in candidates
+               if r.get('Above 200MA') and not r.get('Trend Quality')]
+    pool = quality + partial
+    picks = pool[:MAX_POSITIONS]
+
+    print(f"\n{SEP2}")
+    print(f"  PORTFOLIO  --  Top {MAX_POSITIONS} Picks @ "
+          f"{POSITION_SIZE:.0f}% each  (Sorted by $Vol)")
+    eff = POSITION_SIZE * alloc / 100
+    print(f"  Regime allocation: {alloc}%  -->  "
+          f"Effective position: {eff:.1f}% each")
+    if alloc == 0:
+        print(f"  !!  REGIME = RISK OFF  -->  "
+              f"0% allocation. All cash recommended.")
+    print(f"{SEP2}")
+
+    if not picks:
+        print("  No qualifying picks.")
         return
 
-    # Recalculate composite scores with the latest scoring formula
-    for s in stock_best.values():
-        s["Composite Score"] = calc_composite(s)
+    for i, r in enumerate(picks, 1):
+        eff_size = POSITION_SIZE * alloc / 100
+        trend = ("Confirmed (50MA rising + >200MA)"
+                 if r.get('Trend Quality') else "Partial")
+        ext_warn = (f"  !! OVEREXTENDED ({r.get('Extension %', 0):+.0f}%)"
+                    if r.get('Overextended') else "")
+        stop_type = ("Leveraged 25%"
+                     if r.get('Leveraged') else "Stock 15%")
+        stop_pct = (TRAILING_STOP_LEVERAGED
+                    if r.get('Leveraged') else TRAILING_STOP_STOCK)
+        stop_price = r['Price'] * (1 - stop_pct / 100)
 
-    h_sorted = sorted(
-        stock_best.values(),
-        key=lambda x: x.get("Dollar Volume") or 0,
-        reverse=True,
-    )
+        print(f"\n  #{i}  {r['Ticker']}  --  {r.get('Name', r['Ticker'])[:30]}")
+        print(f"      Price: ${r['Price']:.2f}  |  Score: {r.get('Score', 0):.1f}")
+        print(f"      3D: {fmt_pct(r.get('3D %'))} | "
+              f"5D: {fmt_pct(r.get('5D %'))} | "
+              f"15D: {fmt_pct(r.get('15D %'))}")
+        print(f"      Trend: {trend}{ext_warn}")
+        print(f"      MA50: ${r.get('MA50', 'N/A')}  |  "
+              f"MA200: ${r.get('MA200') or 'N/A'}")
+        print(f"      Size: {eff_size:.1f}%  |  "
+              f"Trailing Stop: ${stop_price:.2f} ({stop_type})")
+        print(f"      Vol: {r.get('Vol Surge', 1.0):.1f}x  |  "
+              f"$Vol: {fmt_dollar_volume(r.get('Dollar Volume'))}  |  "
+              f"DD: {r.get('Drawdown %', 0):+.1f}%")
+
+
+def print_history_ranking(stock_freqs, etf_freqs):
+    all_freqs = Counter()
+    all_freqs.update(stock_freqs)
+    all_freqs.update(etf_freqs)
+    top = all_freqs.most_common(20)
+    if not top:
+        return
 
     print(f"\n{SEP}")
-    print(f"  STOCK SCORE RANKING (from history)")
+    print(f"  STOCK SCORE RANKING (Last {MAX_HISTORY} Days)")
     print(f"{SEP}")
-    print(f"  {'#':>3}  {'Ticker':<7} {'Name':<25} {'Today':>8} {'$Vol':>10} {'Score':>6} {'Vol':>5} {'Flags':<6} {'Freq':>6} {'Action':<12}")
-    print(f"  {'---':>3}  {'------':<7} {'----':<25} {'-----':>8} {'----':>10} {'-----':>6} {'---':>5} {'-----':<6} {'----':>6} {'------':<12}")
+    print(f"  {'#':>3}  {'Ticker':<10} {'Freq':>10}")
+    print(f"  {'---':>3}  {'------':<10} {'----':>10}")
+    for i, (ticker, count) in enumerate(top, 1):
+        print(f"  {i:>3}  {ticker:<10} {count:>4}/{MAX_HISTORY}")
 
-    total = len(h_sorted)
-    for i, r in enumerate(h_sorted, start=1):
-        ticker = r.get("Ticker", "?")
-        name = r.get("Name", ticker)[:25]
-        today = fmt_pct(r.get("Today %"))
-        dollar_vol = fmt_dollar_volume(r.get("Dollar Volume"))
-        score = r.get("Composite Score", 0)
-        vs = r.get("Vol Surge", 1.0)
-        acc = "A" if r.get("Acceleration") else ""
-        brk = "B" if r.get("Breakout") else ""
-        flags = f"{acc}{brk}" or "-"
-        freq = sf.get(ticker, 0)
-        sig = _signal(r, freq, i, total)
-        hits = _grade(r, freq, i, total)
-        grade = f"[{hits}/4]" if hits >= 3 else ""
 
-        vs_str = f"{vs:.1f}x"
-        print(
-            f"  {i:>3}  {ticker:<7} {name:<25} {today:>8} {dollar_vol:>10} {score:>6.0f} {vs_str:>5} {flags:<6} "
-            f"{freq:>2}/{MAX_HISTORY:<3} {sig:<10} {grade}"
-        )
-
+# ── Main ──────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--no-save-history", action="store_true")
-    parser.add_argument("--no-html", action="store_true", help="Skip HTML generation")
+    parser = argparse.ArgumentParser(
+        description="Unified Screener (Console + HTML)")
+    parser.add_argument("--mark-rebalanced", action="store_true",
+                        help="Record today as rebalance date")
+    parser.add_argument("--no-save-history", action="store_true",
+                        help="Skip saving today's results to history/")
+    parser.add_argument("--no-html", action="store_true",
+                        help="Skip HTML output")
     args = parser.parse_args()
 
     now = f"{datetime.now():%Y-%m-%d %H:%M}"
-    print(f"\n  Market Analysis  |  {now}")
+    print(f"\n{SEP2}")
+    print(f"  Unified Screener  |  {now}")
+    print(f"  Scoring: 3D×3+5D×2+15D×1 | Benchmark: SOXL/QQQ | "
+          f"Stops: {TRAILING_STOP_STOCK:.0f}%/{TRAILING_STOP_LEVERAGED:.0f}% "
+          f"| Regime: 4-level")
+    print(f"  Sorted by: Dollar Volume")
+    print(f"{SEP2}")
 
-    # --- Market metrics ---
-    mkt = get_market()
-    print_market(mkt)
+    # ── Regime ──
+    regime = get_regime()
+    print_regime(regime)
 
-    # --- Screeners ---
-    etfs, eb = run_screener("ETF SCREENER", ETF_URL, "QQQ", 50e6, 80, 10, ensure_ticker="SOXL")
-    stocks, sb = run_screener(
-        "STOCK SCREENER",
+    # ── Rebalance check ──
+    rb = check_rebalance(regime['level'])
+    print_rebalance_status(rb)
+
+    if args.mark_rebalanced:
+        save_rebalance(regime['level'])
+        print("  Rebalance date saved.")
+
+    # ── Screen stocks (benchmark: SOXL) ──
+    stocks, stock_bench = run_screener(
+        "STOCK SCREENER (vs SOXL)",
         [STOCK_URL, STOCK_URL2, STOCK_URL3],
-        "SOXL",
-        30e6,
-        200,
-        15,
-        min_bars=20,
+        bench_ticker="SOXL",
+        min_dv=30e6, dl_limit=200,
     )
 
-    # --- History ---
+    # ── Screen ETFs (benchmark: QQQ) ──
+    etfs, etf_bench = run_screener(
+        "ETF SCREENER (vs QQQ)",
+        [ETF_URL],
+        bench_ticker="QQQ",
+        min_dv=50e6, dl_limit=80,
+    )
+
+    # ── Load history for frequency ──
+    stock_history, etf_history = load_history()
+    stock_freqs = freq_count(stock_history)
+    etf_freqs = freq_count(etf_history, key='etfs')
+    s_dates = [d['date'] for d in stock_history]
+    e_dates = [d['date'] for d in etf_history]
+
+    # ── Print full tables (sorted by $Vol) ──
+    print_table("STOCKS — Sorted by $Vol (Beat SOXL)",
+                stocks, "SOXL", stock_bench, stock_freqs, s_dates)
+    print_table("ETFs — Sorted by $Vol (Beat QQQ)",
+                etfs, "QQQ", etf_bench, etf_freqs, e_dates)
+
+    # ── Top Picks ──
+    print_top_picks(stocks, etfs, stock_freqs, etf_freqs, stock_bench)
+
+    # ── Portfolio picks ──
+    print_portfolio(stocks, etfs, regime)
+
+    # ── History ranking ──
+    print_history_ranking(stock_freqs, etf_freqs)
+
+    # ── Save history ──
     if not args.no_save_history:
-        print("\n[SAVING HISTORY]")
-        save_history(stocks, etfs)
+        stock_data = [r for r in stocks if not r.get('_reference')]
+        etf_data = [r for r in etfs if not r.get('_reference')]
+        save_history(stock_data, etf_data)
 
-    sh, eh = load_history()
-    sf, ef = freq_count(sh, "stocks"), freq_count(eh, "etfs")
-    s_days = [d["date"] for d in sh]
-    e_days = [d["date"] for d in eh]
-    print(f"   History: {len(sh)}d stocks, {len(eh)}d ETFs")
-
-    # --- ETF table ---
-    print_table("ETF Screener (Beat QQQ)", "QQQ", eb, etfs, ef, e_days)
-
-    # --- Stock table ---
-    stocks_by_dvol = sorted(stocks, key=lambda x: x.get("Dollar Volume") or 0, reverse=True)
-    print_table("Stock Screener (Beat SOXL)", "SOXL", sb, stocks_by_dvol, sf, s_days)
-
-    # --- History ranking ---
-    print_history_ranking(sh, sf)
-
-    # --- Generate HTML ---
+    # ── Generate HTML ──
     if not args.no_html:
-        print("\n[GENERATING HTML]")
-        html = generate_html(mkt, etfs, eb, stocks, sb, sf, sh, ef, eh)
-        out = os.path.join(ROOT, "index.html")
-        with open(out, "w") as f:
+        html = generate_html(regime, stocks, stock_bench, etfs, etf_bench,
+                             stock_freqs, etf_freqs, stock_history,
+                             etf_history)
+        html_path = os.path.join(ROOT, "index.html")
+        with open(html_path, "w", encoding="utf-8") as f:
             f.write(html)
-        print(f"   -> {out}")
+        print(f"\n  HTML saved: {html_path}")
 
-    print(f"\n{'=' * 70}")
-    print("  [DONE]")
-    print(f"{'=' * 70}\n")
+    # ── Summary ──
+    print(f"\n{SEP2}")
+    print(f"  SUMMARY")
+    print(f"{SEP2}")
+    print(f"  Regime: {regime['label']} ({regime['score']}/100) "
+          f"--> {regime['allocation_pct']}% allocation")
+    print(f"  Stocks: {len(stocks)} passed  |  ETFs: {len(etfs)} passed")
+    print(f"  Rebalance: {'DUE' if rb['due'] else 'Not due'} "
+          f"(last: {rb['last']})")
+    print(f"{SEP2}\n")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
