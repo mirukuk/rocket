@@ -43,12 +43,18 @@ LEVERAGED_TICKERS = {
     'TQQQ', 'SOXL', 'UPRO', 'SPXL', 'TECL', 'FNGU', 'LABU', 'TNA',
     'UDOW', 'CURE', 'DFEN', 'DRN', 'DUSL', 'FAS', 'HIBL', 'MIDU',
     'NAIL', 'RETL', 'TPOR', 'WANT', 'WEBL',
-    'SQQQ', 'SPXS', 'SDOW', 'FAZ', 'TZA', 'LABD',
+    'SQQQ', 'SPXS', 'SDOW', 'FAZ', 'TZA', 'LABD', 'FNGD',
 }
 
 BEAR_ETFS = [
     'SQQQ', 'SPXS', 'SDOW', 'SRTY', 'SPXU', 'LABD', 'FAZ', 'SOXS', 'TECS',
-    'YANG', 'WEBS', 'HIBS', 'TZA', 'DRV', 'DUG', 'PST', 'TMV', 'OILD', 'KOLD'
+    'YANG', 'WEBS', 'HIBS', 'TZA', 'DRV', 'DUG', 'PST', 'TMV', 'OILD', 'KOLD', 'FNGD'
+]
+
+BULL_ETFS = [
+    'TQQQ', 'SOXL', 'UPRO', 'SPXL', 'TECL', 'FNGU', 'LABU', 'TNA',
+    'UDOW', 'CURE', 'DFEN', 'DRN', 'DUSL', 'FAS', 'HIBL', 'MIDU',
+    'NAIL', 'RETL', 'TPOR', 'WANT', 'WEBL'
 ]
 
 ETF_URL = "https://finviz.com/screener.ashx?v=411&f=ind_exchangetradedfund%2Csh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&o=-volume"
@@ -785,8 +791,19 @@ def main():
         bench_ticker="QQQ",
         min_dv=50e6, dl_limit=80,
     )
+    
+    # Adding BULL_ETFS (like FNGD in Top Bear Shorts)
+    bull_etfs_res, bull_etf_bench = run_screener(
+        "TOP BULL LEVERAGED ETFs (vs QQQ)",
+        finviz_urls=[],
+        bench_ticker="QQQ",
+        min_dv=5e6, dl_limit=80,
+        ticker_list=BULL_ETFS
+    )
+    
     print_table("STOCKS", stocks, "SOXL", stock_bench, all_freqs)
     print_table("BULL ETFs", etfs, "QQQ", etf_bench, all_freqs)
+    print_table("TOP BULL LONGS", bull_etfs_res, "QQQ", bull_etf_bench, all_freqs)
 
     bear_etfs = []
     if is_bear_mode:
@@ -822,6 +839,7 @@ def main():
     
     sections = [
         (stocks, "Top Stocks"),
+        (bull_etfs_res, "Top Bull Longs"),
         (etfs, "Top ETFs")
     ]
     if is_bear_mode:

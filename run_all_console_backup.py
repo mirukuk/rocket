@@ -44,7 +44,7 @@ LEVERAGED_TICKERS = {
     'TQQQ', 'SOXL', 'UPRO', 'SPXL', 'TECL', 'FNGU', 'LABU', 'TNA',
     'UDOW', 'CURE', 'DFEN', 'DRN', 'DUSL', 'FAS', 'HIBL', 'MIDU',
     'NAIL', 'RETL', 'TPOR', 'WANT', 'WEBL',
-    'SQQQ', 'SPXS', 'SDOW', 'FAZ', 'TZA', 'LABD',
+    'SQQQ', 'SPXS', 'SDOW', 'FAZ', 'TZA', 'LABD', 'FNGD',
 }
 
 ETF_URL = "https://finviz.com/screener.ashx?v=411&f=ind_exchangetradedfund%2Csh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&o=-volume"
