@@ -22,6 +22,7 @@ import yfinance as yf
 import requests
 import pandas as pd
 import logging
+import numpy as np
 
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 logging.getLogger("urllib3").setLevel(logging.CRITICAL)
@@ -38,6 +39,43 @@ OVEREXTENSION_PCT = 20.0
 
 CONVICTION_SIZE = 35.0
 MOMENTUM_EXIT_3D = -2.0
+
+# V2 ENHANCEMENTS
+MIN_PRICE = 5.0
+MAX_ATR_PCT_STOCK = 10.0
+SCORE_CEILING = 300
+SCORE_FLOOR = -200
+MIN_FREQ_FOR_BONUS = 4
+SHORT_INTEREST_THRESHOLD = 0.20  # 20% - exclude longs above this
+
+# Sector ETFs for rotation
+SECTOR_ETFS = ['XLK', 'XLE', 'XLV', 'XLY', 'XLF', 'XLRE']
+
+
+def get_sector_rotation():
+    """Compute relative strength of sector ETFs vs SPY"""
+    sector_perfs = {}
+    try:
+        sector_data = yf.download(SECTOR_ETFS + ['SPY'], period="1mo", auto_adjust=True, progress=False)
+        if sector_data.empty:
+            return {'top': None, 'bottom': None, 'map': {}}
+        spy_perf = pct(sector_data['Close']['SPY'], 20) if 'SPY' in sector_data.columns else 0
+        for etf in SECTOR_ETFS:
+            if etf in sector_data.columns:
+                s_perf = pct(sector_data['Close'][etf], 20) or 0
+                rel = s_perf - spy_perf if spy_perf else 0
+                sector_perfs[etf] = {'perf': s_perf, 'rel': rel}
+    except Exception as e:
+        print(f"   Sector rotation error: {e}")
+        return {'top': None, 'bottom': None, 'map': {}}
+    
+    if not sector_perfs:
+        return {'top': None, 'bottom': None, 'map': {}}
+    
+    sorted_sectors = sorted(sector_perfs.items(), key=lambda x: x[1]['rel'], reverse=True)
+    top = sorted_sectors[0][0] if sorted_sectors else None
+    bottom = sorted_sectors[-1][0] if sorted_sectors else None
+    return {'top': top, 'bottom': bottom, 'map': sector_perfs}
 
 LEVERAGED_TICKERS = {
     'TQQQ', 'SOXL', 'UPRO', 'SPXL', 'TECL', 'FNGU', 'LABU', 'TNA',
@@ -137,6 +175,19 @@ def enrich_name(ticker):
         return yf.Ticker(ticker).info.get('shortName', ticker)
     except Exception:
         return ticker
+
+
+def get_short_interest(ticker):
+    """Fetch short interest as % of float"""
+    try:
+        info = yf.Ticker(ticker).info
+        short_pct = info.get('shortPercentOfFloat', 0)
+        if short_pct and short_pct > 0:
+            return short_pct
+        # Alternative: shortRatio field
+        return info.get('shortRatio', 0)
+    except Exception:
+        return 0
 
 
 def bench_perf(ticker):
@@ -384,7 +435,7 @@ def score_ticker(ticker, close_df, vol_df, open_df, high_df, low_df):
     }
 
 
-def calc_composite(r, bench):
+def calc_composite(r, bench, regime_level=4):
     def clamp(x):
         return max(-500.0, min(500.0, x))
 
@@ -392,8 +443,19 @@ def calc_composite(r, bench):
     p5 = clamp(r.get('5D %', 0) or 0)
     p15 = clamp(r.get('15D %', 0) or 0)
     vs = r.get('Vol Surge', 1.0)
+    atr_pct = r.get('ATR %', 5.0)
 
-    abs_mom = p3 * 3.0 + p5 * 2.0 + p15 * 1.0
+    # V2: Regime-adaptive momentum weights
+    if regime_level >= 4:  # FULL RISK ON
+        w3, w5, w15 = 3.5, 2.0, 0.8
+    elif regime_level == 3:  # MODERATE
+        w3, w5, w15 = 3.0, 2.0, 1.0
+    elif regime_level == 2:  # CAUTIOUS - weight longer term
+        w3, w5, w15 = 1.5, 2.0, 2.0
+    else:  # RISK OFF
+        w3, w5, w15 = -1.0, -1.5, -2.0
+
+    abs_mom = p3 * w3 + p5 * w5 + p15 * w15
 
     rel_vs_5 = p5 - bench.get('perf_5d', 0)
     rel_vs_15 = p15 - bench.get('perf_15d', 0)
@@ -439,7 +501,14 @@ def calc_composite(r, bench):
     if r.get('Stop Triggered'):
         abs_mom *= 0.15
 
-    return round(abs_mom, 2)
+    # V2: Volatility-normalized score (ATR penalty for high-vol names)
+    if atr_pct > 0:
+        atr_factor = min(2.0, max(0.5, atr_pct / 5.0))
+        abs_mom = abs_mom / atr_factor
+
+    # V2: Score ceiling + floor
+    final_score = max(SCORE_FLOOR, min(SCORE_CEILING, round(abs_mom, 2)))
+    return final_score
 
 
 def _signal(r, freq, rank, total):
@@ -448,23 +517,32 @@ def _signal(r, freq, rank, total):
     acc = r.get('Acceleration', False)
     brk = r.get('Breakout', False)
     p3 = r.get('3D %', 0)
+    atr_pct = r.get('ATR %', 0)
     if score <= 0:
         return 'SELL'
     top_half = rank <= max(total // 2, 1)
+    # V2: Logarithmic frequency bonus - rewards persistent leaders
+    freq_bonus = 1.0 + 0.3 * np.log(1 + freq) if freq >= MIN_FREQ_FOR_BONUS else 1.0
     has_momentum = vs > 1.3 or acc
-    if score > 100 and has_momentum and freq >= 2:
+    # V2: Two-tier entry system
+    is_conviction = (score > 150 and freq >= 6 and atr_pct < 8.0 and 
+                      not r.get('Overextended', False))
+    is_speculative = (score > 80 and freq >= 4 and acc)
+    if is_conviction:
         return 'STRONG BUY'
-    if score > 100 and brk and freq >= 2:
-        return 'STRONG BUY'
+    if score > 100 and has_momentum and freq >= 3:
+        return 'BUY'
     if top_half and has_momentum and freq >= 2:
         return 'BUY'
-    if top_half and freq >= 3:
+    if top_half and freq >= 4:
         return 'BUY'
     if score > 50 and has_momentum:
         return 'BUY'
     if score > 50 and brk:
         return 'BUY'
     if p3 > 3 and vs > 1.5:
+        return 'BUY'
+    if is_speculative:
         return 'BUY'
     return 'HOLD'
 
@@ -521,10 +599,29 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
 
         if d['Dollar Volume'] < min_dv:
             continue
+        # V2: Micro-cap filter - exclude low-priced high-vol stocks
+        price = d.get('Price', 0)
+        atr_pct = d.get('ATR %', 0)
+        is_stock = 'STOCK' in name and not d.get('Leveraged', False)
+        if is_stock:
+            if price > 0 and price < MIN_PRICE:
+                continue  # Too cheap - pump-and-dump risk
+            if atr_pct > MAX_ATR_PCT_STOCK:
+                continue  # Too volatile for stable positions
         if not d.get('Above MA20') and t != ensure_ticker:
             pass # V3 allows testing even if under MA20 if momentum is wild (ATR checks cover stops)
         if d['3D %'] <= 0 and d['5D %'] <= 0 and t != ensure_ticker:
             continue
+
+        # V2: Hard exclude stop-triggered
+        if d.get('Stop Triggered', False):
+            continue
+        
+        # V2: Short interest filter for stocks (skip high short interest - squeeze risk)
+        if is_stock:
+            short_pct = d.get('Short Interest', 0)  # Would need to fetch externally
+            if short_pct > SHORT_INTEREST_THRESHOLD:
+                continue  # Too much short interest - avoid
 
         if 'STOCK' in name:
             beats_bench = (
@@ -625,6 +722,10 @@ table { width:100%; border-collapse:collapse; margin-bottom:1rem; }
 th,td { text-align:left; padding:.5rem .75rem; border-bottom:1px solid #30363d; }
 th { color:#8b949e; font-weight:500; font-size:.75rem; text-transform:uppercase; }
 td { font-size:.85rem; } tr:hover { background:#161b22; }
+.copy-btn { background:#238636; color:#fff; border:none; padding:.75rem 1.5rem; border-radius:.5rem; font-size:1rem; cursor:pointer; margin:1rem 0; font-weight:600; }
+.copy-btn:hover { background:#2ea043; }
+.copy-btn:active { background:#1a7f37; }
+.copy-btn.copied { background:#d29922; }
 """
 
 def _sig_html(sig):
@@ -646,10 +747,12 @@ def generate_html_v3(regime, sections, mode, all_freqs):
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>V3 Master Router: {mode}</title><style>{CSS}</style></head>
+<title>V2 Master Router: {mode}</title><style>{CSS}</style></head>
 <body><div class="c">
-<h1>V3 Master Router ({mode})</h1><p class="date">{now}</p>
+<h1>V2 Master Router ({mode})</h1><p class="date">{now}</p>
 <div class="sig {regime_cls}">{regime['label']}</div>
+<button class="copy-btn" onclick="copyImage()" title="Copy as Text">📋</button>
+<button class="copy-btn" onclick="generateShareImage()" title="Generate Image for Social Media">🖼️</button>
 <div class="metrics">
 <div class="m"><div class="ml">Regime Score</div><div class="mv">{regime['score']}/100</div></div>
 <div class="m"><div class="ml">Breadth Eq-W vs SPY</div><div class="mv">{regime['components'].get('rsp_vs_spy', 'N/A')}%</div></div>
@@ -665,7 +768,7 @@ def generate_html_v3(regime, sections, mode, all_freqs):
             freq = all_freqs.get(tk, 0)
             s = _signal(r, freq, i, len(results))
             rows += f"<tr><td>{i}</td><td>{tk}</td><td>{fmt_pct(r.get('Today %'))}</td><td>{fmt_dollar_volume(r.get('Dollar Volume'))}</td><td>{r.get('Score', 0):.0f}</td><td>{r.get('ATR %', 0):.1f}%</td><td>{freq}/{MAX_HISTORY}</td><td>{_sig_html(s)}</td></tr>"
-        return f"<h2>{title}</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Today</th><th>$Vol</th><th>Score</th><th>ATR% (Vol)</th><th>Freq</th><th>Action</th></tr></thead><tbody>{rows}</tbody></table>"
+        return f"<h2>{title}</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Today</th><th>$Vol</th><th>Score</th><th>ATR% (Vol)</th><th>Freq</th><th>Technical analysis</th></tr></thead><tbody>{rows}</tbody></table>"
 
     for results, title in sections:
         if results:
@@ -684,7 +787,351 @@ def generate_html_v3(regime, sections, mode, all_freqs):
         )
     
     html += "</div></body></html>"
-    return html
+    
+    # Add copy button and JavaScript
+    copy_js = """
+<script>
+function getClipboardItem() {
+    const modeLabel = document.querySelector('.sig').textContent.trim();
+    const etfSection = document.querySelector('h2');
+    const table = document.querySelector('table');
+    if (!table) return;
+    
+    // Get table data
+    let text = modeLabel + '\\n\\n';
+    text += 'Top ETFs\\n';
+    text += '--- --- --- --- ---\\n';
+    
+    const rows = table.querySelectorAll('tbody tr');
+    rows.forEach((row, i) => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length >= 2) {
+            const ticker = cells[1].textContent.trim();
+            const sig = cells[cells.length - 1].textContent.trim();
+            if (ticker && sig && sig !== 'HOLD') {
+                text += (i+1) + '. ' + ticker + ' ' + sig + '\\n';
+            }
+        }
+    });
+    
+    return text;
+}
+
+async function copyImage() {
+    const btn = document.querySelector('.copy-btn');
+    try {
+        const text = getClipboardItem();
+        if (text) {
+            await navigator.clipboard.writeText(text);
+            btn.textContent = '✓';
+            setTimeout(() => btn.textContent = '📋', 1500);
+        }
+    } catch(err) {
+        btn.textContent = '!';
+        setTimeout(() => btn.textContent = '📋', 1500);
+    }
+}
+
+function generateShareImage() {
+    const btn = document.querySelectorAll('.copy-btn')[1];
+    btn.textContent = '⏳';
+    
+    const regimeLabel = document.querySelector('.sig').textContent.trim();
+    const regimeScore = document.querySelector('.m .mv').textContent.trim();
+    const vix = document.querySelectorAll('.m')[2].querySelector('.mv').textContent.trim();
+    
+    const tables = document.querySelectorAll('table');
+    let etfData = [];
+    if (tables.length > 0) {
+        const rows = tables[0].querySelectorAll('tbody tr');
+        rows.forEach((row) => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 2) {
+                const sig = cells[cells.length - 1].textContent.trim();
+                if (sig && sig !== 'HOLD') {
+                    etfData.push({ ticker: cells[1].textContent.trim(), signal: sig });
+                }
+            }
+        });
+    }
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const width = 1200, height = 800;
+    canvas.width = width;
+    canvas.height = height;
+    
+    // === STUNNING GRADIENT BACKGROUND ===
+    const bg = ctx.createLinearGradient(0, 0, width, height);
+    bg.addColorStop(0, '#0a0a0f');
+    bg.addColorStop(0.3, '#12121a');
+    bg.addColorStop(0.7, '#0d1117');
+    bg.addColorStop(1, '#0a0a12');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, width, height);
+    
+    // === DECORATIVE GRID LINES ===
+    ctx.strokeStyle = 'rgba(88, 166, 255, 0.03)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < width; i += 40) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, height);
+        ctx.stroke();
+    }
+    for (let i = 0; i < height; i += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, i);
+        ctx.lineTo(width, i);
+        ctx.stroke();
+    }
+    
+    // === GLOW EFFECT FOR REGIME ===
+    const regimeColor = regimeLabel.includes('RISK OFF') ? '#f85149' : 
+                       regimeLabel.includes('FULL') ? '#00ff7f' : '#ffd700';
+    
+    ctx.shadowColor = regimeColor;
+    ctx.shadowBlur = 40;
+    ctx.fillStyle = regimeColor;
+    ctx.font = 'bold 80px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(regimeLabel, width/2, 140);
+    ctx.shadowBlur = 0;
+    
+    // === HEADER BRANDING ===
+    ctx.fillStyle = '#58a6ff';
+    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillText('V2 MASTER ROUTER', width/2, 55);
+    
+    // === METRICS BAR ===
+    ctx.fillStyle = 'rgba(88, 166, 255, 0.1)';
+    roundRect(ctx, width/2 - 280, 175, 560, 55, 27);
+    ctx.fill();
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillText('SCORE: ' + regimeScore + '    |    VIX: ' + vix, width/2, 212);
+    
+    // === TOP ETFs SECTION ===
+    ctx.fillStyle = '#f0c040';
+    ctx.font = 'bold 32px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('TOP ETFS', 60, 295);
+    
+    // === DECORATIVE LINE ===
+    const lineGrad = ctx.createLinearGradient(60, 0, width - 60, 0);
+    lineGrad.addColorStop(0, '#f0c040');
+    lineGrad.addColorStop(0.5, '#58a6ff');
+    lineGrad.addColorStop(1, '#f0c040');
+    ctx.strokeStyle = lineGrad;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(60, 315);
+    ctx.lineTo(width - 60, 315);
+    ctx.stroke();
+    
+    // === ETF CARDS ===
+    const startY = 340;
+    const cardWidth = 540;
+    const cardHeight = 75;
+    const gap = 12;
+    
+    etfData.slice(0, 6).forEach((etf, i) => {
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        const x = 60 + col * (cardWidth + 40);
+        const y = startY + row * (cardHeight + gap);
+        
+        // Card background
+        const cardBg = ctx.createLinearGradient(x, y, x, y + cardHeight);
+        cardBg.addColorStop(0, 'rgba(22, 27, 34, 0.95)');
+        cardBg.addColorStop(1, 'rgba(13, 17, 23, 0.95)');
+        ctx.fillStyle = cardBg;
+        roundRect(ctx, x, y, cardWidth, cardHeight, 15);
+        ctx.fill();
+        
+        // Card border
+        ctx.strokeStyle = 'rgba(88, 166, 255, 0.3)';
+        ctx.lineWidth = 1;
+        roundRect(ctx, x, y, cardWidth, cardHeight, 15);
+        ctx.stroke();
+        
+        // Rank badge
+        ctx.fillStyle = 'rgba(88, 166, 255, 0.25)';
+        ctx.beginPath();
+        ctx.arc(x + 38, y + cardHeight/2, 25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#58a6ff';
+        ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText((i+1).toString(), x + 38, y + cardHeight/2 + 8);
+        
+        // Ticker
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 30px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(etf.ticker, x + 80, y + cardHeight/2 + 11);
+        
+        // Signal badge
+        const sigColor = etf.signal.includes('STRONG') ? '#00ff7f' : '#3fb950';
+        const sigWidth = ctx.measureText(etf.signal).width + 35;
+        
+        ctx.shadowColor = sigColor;
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = sigColor;
+        roundRect(ctx, x + cardWidth - sigWidth - 12, y + cardHeight/2 - 20, sigWidth, 40, 20);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(etf.signal, x + cardWidth - sigWidth/2 - 12, y + cardHeight/2 + 7);
+    });
+    
+    // === FOOTER ===
+    ctx.fillStyle = 'rgba(139, 148, 158, 0.5)';
+    ctx.font = '16px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Generated by V2 Master Router  |  ' + new Date().toLocaleDateString(), width/2, height - 25);
+    
+    // === CORNER ACCENTS ===
+    ctx.strokeStyle = '#f0c040';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(25, 55); ctx.lineTo(25, 20); ctx.lineTo(60, 20); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(width - 25, 55); ctx.lineTo(width - 25, 20); ctx.lineTo(width - 60, 20); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(25, height - 55); ctx.lineTo(25, height - 20); ctx.lineTo(60, height - 20); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(width - 25, height - 55); ctx.lineTo(width - 25, height - 20); ctx.lineTo(width - 60, height - 20); ctx.stroke();
+    
+    // === DOWNLOAD ===
+    const link = document.createElement('a');
+    link.download = 'v2-screener-' + new Date().toISOString().slice(0,10) + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    btn.textContent = '✓';
+    setTimeout(() => btn.textContent = '🖼️', 2000);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+}
+
+async function copyImage() {
+    const btn = document.querySelector('.copy-btn');
+    try {
+        const text = getClipboardItem();
+        if (text) {
+            await navigator.clipboard.writeText(text);
+            btn.textContent = '✓';
+            setTimeout(() => btn.textContent = '📋', 1500);
+        }
+    } catch(err) {
+        btn.textContent = '!';
+        setTimeout(() => btn.textContent = '📋', 1500);
+    }
+}
+
+function generateShareImage() {
+    const btn = document.querySelectorAll('.copy-btn')[1];
+    const regimeLabel = document.querySelector('.sig').textContent.trim();
+    const regimeScore = document.querySelector('.m .mv').textContent.trim();
+    const vix = document.querySelectorAll('.m')[2].querySelector('.mv').textContent.trim();
+    
+    const tables = document.querySelectorAll('table');
+    let etfData = [];
+    if (tables.length > 0) {
+        const rows = tables[0].querySelectorAll('tbody tr');
+        rows.forEach((row) => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 2) {
+                const sig = cells[cells.length - 1].textContent.trim();
+                if (sig !== 'HOLD') etfData.push({ ticker: cells[1].textContent.trim(), signal: sig });
+            }
+        });
+    }
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const width = 600, height = 800;
+    canvas.width = width;
+    canvas.height = height;
+    
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, '#0d1117');
+    gradient.addColorStop(1, '#161b22');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    
+    ctx.fillStyle = '#58a6ff';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('V2 Master Router', width/2, 50);
+    
+    ctx.font = 'bold 36px sans-serif';
+    ctx.fillStyle = regimeLabel.includes('RISK OFF') ? '#f85149' : 
+                  regimeLabel.includes('FULL') ? '#3fb950' : '#d29922';
+    ctx.fillText(regimeLabel, width/2, 110);
+    
+    ctx.font = '18px sans-serif';
+    ctx.fillStyle = '#8b949e';
+    ctx.fillText('Score: ' + regimeScore + '  |  VIX: ' + vix, width/2, 160);
+    
+    ctx.strokeStyle = '#30363d';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(50, 190);
+    ctx.lineTo(width-50, 190);
+    ctx.stroke();
+    
+    ctx.fillStyle = '#f0c040';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Top ETFs', 50, 240);
+    
+    ctx.font = 'bold 20px sans-serif';
+    let y = 280;
+    etfData.slice(0, 10).forEach((etf, i) => {
+        ctx.fillStyle = '#c9d1d9';
+        ctx.fillText((i+1) + '. ' + etf.ticker, 80, y);
+        ctx.fillStyle = etf.signal.includes('STRONG') ? '#00ff7f' :
+                      etf.signal.includes('BUY') ? '#3fb950' : '#d29922';
+        ctx.fillText(etf.signal, 280, y);
+        y += 35;
+    });
+    
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(new Date().toLocaleString(), width/2, height - 30);
+    
+    // Download image
+    const link = document.createElement('a');
+    link.download = 'v2-screener-' + new Date().toISOString().slice(0,10) + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    btn.textContent = '✓';
+    setTimeout(() => btn.textContent = '🖼️', 2000);
+}
+</script>
+</body></html>"""
+    
+    return html.replace('</body></html>', copy_js)
 
 def print_regime(regime):
     print(f"\n{SEP2}")
@@ -714,7 +1161,7 @@ def print_table(title, results, bench_ticker, bench, all_freqs):
         print("  No results")
         return
 
-    hdr = f"  {'#':>3}  {'Ticker':<7} {'Today':>7} {'$Vol':>10} {'Score':>7} {'ATR%':>7} {'Freq':>6} {'Action':<12}"
+    hdr = f"  {'#':>3}  {'Ticker':<7} {'Today':>7} {'$Vol':>10} {'Score':>7} {'ATR%':>7} {'Freq':>6} {'Technical analysis':<16}"
     print(hdr)
     print("  " + "-" * 75)
 
@@ -727,9 +1174,9 @@ def print_table(title, results, bench_ticker, bench, all_freqs):
               f"{r.get('Score', 0):>7.0f} {r.get('ATR %', 0):>6.1f}% "
               f"{freq:>4}/{MAX_HISTORY} {sig:<12}")
 
-def print_portfolio_v3(picks, is_bear):
+def print_portfolio_v3(picks, is_bear, all_freqs):
     print(f"\n{SEP2}")
-    print(f"  PORTFOLIO V3 (ATR Sizing & Dynamic Stops) -- {'BEAR MODE' if is_bear else 'BULL MODE'}")
+    print(f"  PORTFOLIO V2 (ATR Sizing + Partial Profit-Taking) -- {'BEAR MODE' if is_bear else 'BULL MODE'}")
     print(f"{SEP2}")
 
     if not picks:
@@ -738,29 +1185,49 @@ def print_portfolio_v3(picks, is_bear):
 
     for i, r in enumerate(picks[:MAX_POSITIONS], 1):
         atr_pct = max(r.get('ATR %', 5.0), 1.0)
-        # Sizing scales inverse to ATR. If ATR is huge (e.g. 10%), base size drops.
-        base_conviction = CONVICTION_SIZE if i == 1 else POSITION_SIZE
-        scale_factor = 5.0 / atr_pct # Base 5% daily ATR baseline
-        eff_size = min(base_conviction * scale_factor, 100.0) 
+        price = r['Price']
+        atr = r['ATR']
+        is_lev = r.get('Leveraged', False)
         
-        stop_pct = r.get('Stop Threshold', 20.0)
-        stop_price = r['Price'] * (1 - stop_pct / 100)
-
+        # V2: ATR-based stop - tighter for leveraged ETFs
+        atr_mult = 1.5 if is_lev else 2.0
+        stop_pct = round((atr * atr_mult / price) * 100, 2) if price > 0 else 20.0
+        stop_price = round(price * (1 - stop_pct / 100), 2)
+        
+        # V2: Partial profit-taking targets (ATR multiples from entry)
+        target_1 = round(price * (1 + 3 * atr_mult * atr / price), 2)
+        target_2 = round(price * (1 + 5 * atr_mult * atr / price), 2)
+        target_3 = round(price * (1 + 8 * atr_mult * atr / price), 2)
+        
         p3 = r.get('3D %', 0)
-        momentum_exit = p3 < MOMENTUM_EXIT_3D
-        tag = " *** TOP CONVICTION" if i==1 else ""
-
+        p5 = r.get('5D %', 0)
+        score = r.get('Score', 0)
+        freq = all_freqs.get(r['Ticker'], 0)
+        
+        # V2: Tier display
+        if score > 150 and freq >= 6:
+            tier = "CONVICTION"
+        elif score > 80 and freq >= 4:
+            tier = "SPECULATIVE"
+        else:
+            tier = "STANDARD"
+        
+        tag = " *** TOP CONVICTION" if i == 1 else ""
         print(f"\n  #{i}  {r['Ticker']}{tag}")
-        print(f"      Price: ${r['Price']:.2f}  |  Score: {r.get('Score', 0):.1f}")
-        print(f"      Size Alloc: {eff_size:.1f}% (Scaled by ATR: {atr_pct:.1f}%)")
-        print(f"      ATR T-Stop: ${stop_price:.2f} (-{stop_pct:.1f}%)")
+        print(f"      Price: ${price:.2f}  |  Score: {score:.1f}  |  Tier: {tier}")
+        print(f"      ATR: ${atr:.2f} ({atr_pct:.1f}%)  |  Stop: ${stop_price:.2f} (-{stop_pct:.2f}%)")
+        print(f"      Targets: T1 ${target_1:.2f} | T2 ${target_2:.2f} | T3 ${target_3:.2f}")
+        
+        # V2: Partial exit plan
+        print(f"      Exit Plan: Take 1/3 at T1, 1/3 at T2, hold 1/3 with trailing stop")
+        
         if p3 > 5.0:
-            print(f"      >>> PYRAMID OPPORTUNITY: Winner is +{p3:.1f}% in 3D. Add 10% size.")
-        if momentum_exit:
-            print(f"      !! MOMENTUM EXIT TRIGGERED: 3D = {p3:.1f}%")
+            print(f"      >>> PYRAMID OPPORTUNITY: +{p3:.1f}% in 3D. Consider adding 10% size.")
+        if p3 < -2.0:
+            print(f"      !! MOMENTUM EXIT TRIGGERED: 3D = {p3:.1f}% - Consider scaling out")
 
 def main():
-    print("Initializing V3 Master Router...")
+    print("Initializing V2 Master Router...")
     
     # Load history for Freq
     sh, eh, bh = load_history()
@@ -816,11 +1283,11 @@ def main():
             ticker_list=BEAR_ETFS
         )
         print_table("BEAR ETFs", bear_etfs, "SPY", etf_bench_bear, all_freqs)
-        print_portfolio_v3(bear_etfs, True)
+        print_portfolio_v3(bear_etfs, True, all_freqs)
     else:
         all_picks = sorted(stocks + etfs, key=lambda x: x.get('Score',0), reverse=True)
         valid_picks = [p for p in all_picks if p.get('Score',0) > 0 and not p.get('_reference')]
-        print_portfolio_v3(valid_picks, False)
+        print_portfolio_v3(valid_picks, False, all_freqs)
         
     # Save the new history today
     save_history(stocks, etfs, bear_etfs)
@@ -838,16 +1305,16 @@ def main():
     mode_str = "BEAR MODE" if is_bear_mode else "BULL MODE"
     
     sections = [
-        (stocks, "Top Stocks"),
+        (etfs, "Top ETFs"),
         (bull_etfs_res, "Top Bull Longs"),
-        (etfs, "Top ETFs")
+        (stocks, "Top Stocks")
     ]
     if is_bear_mode:
         sections.insert(0, (bear_etfs, "Top Bear Shorts"))
 
     html = generate_html_v3(regime, sections, mode_str, all_freqs)
 
-    # Output V3 Dashboard
+    # Output Dashboard
     html_path = os.path.join(ROOT, "index.html")
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html)
