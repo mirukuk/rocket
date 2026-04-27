@@ -755,18 +755,42 @@ def generate_html_v3(regime, sections, mode, all_freqs):
 <div class="m"><div class="ml">Stops</div><div class="mv">15%/25%</div><div class="ms">Stock / Leveraged</div></div>
 </div>"""
 
-    def table(results, title):
+    def table(results, title, exclude_cols=None):
+        if exclude_cols is None:
+            exclude_cols = []
         rows = ""
         for i, r in enumerate(results[:15], 1):
             tk = r['Ticker']
             freq = all_freqs.get(tk, 0)
             s = _signal(r, freq, i, len(results))
-            rows += f"<tr><td>{i}</td><td>{tk}</td><td>{fmt_pct(r.get('Today %'))}</td><td>{fmt_dollar_volume(r.get('Dollar Volume'))}</td><td>{r.get('Score', 0):.0f}</td><td>{r.get('ATR %', 0):.1f}%</td><td>{freq}/{MAX_HISTORY}</td><td>{_sig_html(s)}</td></tr>"
-        return f"<h2>{title}</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Today</th><th>$Vol</th><th>Score</th><th>ATR% (Vol)</th><th>Freq</th><th>Technical analysis</th></tr></thead><tbody>{rows}</tbody></table>"
+            
+            cols = f"<td>{i}</td><td>{tk}</td>"
+            if 'Today' not in exclude_cols:
+                cols += f"<td>{fmt_pct(r.get('Today %'))}</td>"
+            cols += f"<td>{fmt_dollar_volume(r.get('Dollar Volume'))}</td><td>{r.get('Score', 0):.0f}</td>"
+            if 'ATR%' not in exclude_cols:
+                cols += f"<td>{r.get('ATR %', 0):.1f}%</td>"
+            cols += f"<td>{freq}/{MAX_HISTORY}</td><td>{_sig_html(s)}</td>"
+            rows += f"<tr>{cols}</tr>"
+        
+        header = "<th>#</th><th>Ticker</th>"
+        if 'Today' not in exclude_cols:
+            header += "<th>Today</th>"
+        header += "<th>$Vol</th><th>Score</th>"
+        if 'ATR%' not in exclude_cols:
+            header += "<th>ATR% (Vol)</th>"
+        header += "<th>Freq</th><th>Technical analysis</th>"
+        
+        return f"<h2>{title}</h2><table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
 
-    for results, title in sections:
+    for item in sections:
+        if len(item) == 3:
+            results, title, exclude_cols = item
+        else:
+            results, title = item
+            exclude_cols = []
         if results:
-            html += table(results, title)
+            html += table(results, title, exclude_cols)
             
     hist_rows = ""
     for rank, (ticker, cnt) in enumerate(all_freqs.most_common(20), 1):
@@ -1298,7 +1322,7 @@ def main():
 
     mode_str = "BEAR MODE" if is_bear_mode else "BULL MODE"
     
-    # Filter ETFs with BUY signal only for new section
+    # Filter ETFs with BUY signal only for new sections
     etfs_with_signal = []
     for i, etf in enumerate(etfs[:15], 1):
         tk = etf['Ticker']
@@ -1307,16 +1331,28 @@ def main():
         if sig in ('BUY', 'STRONG BUY'):
             etfs_with_signal.append(etf)
     
+    # Filter Bull Longs with BUY signal only
+    bull_longs_buy = []
+    for i, etf in enumerate(bull_etfs_res[:15], 1):
+        tk = etf['Ticker']
+        freq = all_freqs.get(tk, 0)
+        sig = _signal(etf, freq, i, len(bull_etfs_res))
+        if sig in ('BUY', 'STRONG BUY'):
+            bull_longs_buy.append(etf)
+    
+    # sections: (results, title, exclude_cols)
     sections = []
     if etfs_with_signal:
-        sections.append((etfs_with_signal, "Top ETFs - BUY Only"))
+        sections.append((etfs_with_signal, "Top ETFs - BUY Only", ['Today', 'ATR%']))
     sections.extend([
-        (etfs, "All ETFs"),
-        (bull_etfs_res, "Top Bull Longs"),
-        (stocks, "Top Stocks")
+        (etfs, "All ETFs", []),
+        (bull_etfs_res, "Top Bull Longs", []),
+        (stocks, "Top Stocks", [])
     ])
+    if bull_longs_buy:
+        sections.insert(2, (bull_longs_buy, "Top Bull Longs - BUY Only", ['Today', 'ATR%']))
     if is_bear_mode:
-        sections.insert(0, (bear_etfs, "Top Bear Shorts"))
+        sections.insert(0, (bear_etfs, "Top Bear Shorts", []))
 
     html = generate_html_v3(regime, sections, mode_str, all_freqs)
 
