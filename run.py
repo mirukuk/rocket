@@ -722,10 +722,6 @@ table { width:100%; border-collapse:collapse; margin-bottom:1rem; }
 th,td { text-align:left; padding:.5rem .75rem; border-bottom:1px solid #30363d; }
 th { color:#8b949e; font-weight:500; font-size:.75rem; text-transform:uppercase; }
 td { font-size:.85rem; } tr:hover { background:#161b22; }
-.copy-btn { background:#238636; color:#fff; border:none; padding:.75rem 1.5rem; border-radius:.5rem; font-size:1rem; cursor:pointer; margin:1rem 0; font-weight:600; }
-.copy-btn:hover { background:#2ea043; }
-.copy-btn:active { background:#1a7f37; }
-.copy-btn.copied { background:#d29922; }
 """
 
 def _sig_html(sig):
@@ -751,8 +747,6 @@ def generate_html_v3(regime, sections, mode, all_freqs):
 <body><div class="c">
 <h1>V2 Master Router ({mode})</h1><p class="date">{now}</p>
 <div class="sig {regime_cls}">{regime['label']}</div>
-<button class="copy-btn" onclick="copyImage()" title="Copy as Text">📋</button>
-<button class="copy-btn" onclick="generateShareImage()" title="Generate Image for Social Media">🖼️</button>
 <div class="metrics">
 <div class="m"><div class="ml">Regime Score</div><div class="mv">{regime['score']}/100</div></div>
 <div class="m"><div class="ml">Breadth Eq-W vs SPY</div><div class="mv">{regime['components'].get('rsp_vs_spy', 'N/A')}%</div></div>
@@ -1131,7 +1125,7 @@ function generateShareImage() {
 </script>
 </body></html>"""
     
-    return html.replace('</body></html>', copy_js)
+    return html
 
 def print_regime(regime):
     print(f"\n{SEP2}")
@@ -1304,11 +1298,23 @@ def main():
 
     mode_str = "BEAR MODE" if is_bear_mode else "BULL MODE"
     
-    sections = [
-        (etfs, "Top ETFs"),
+    # Filter ETFs with BUY signal only for new section
+    etfs_with_signal = []
+    for i, etf in enumerate(etfs[:15], 1):
+        tk = etf['Ticker']
+        freq = all_freqs.get(tk, 0)
+        sig = _signal(etf, freq, i, len(etfs))
+        if sig in ('BUY', 'STRONG BUY'):
+            etfs_with_signal.append(etf)
+    
+    sections = []
+    if etfs_with_signal:
+        sections.append((etfs_with_signal, "Top ETFs - BUY Only"))
+    sections.extend([
+        (etfs, "All ETFs"),
         (bull_etfs_res, "Top Bull Longs"),
         (stocks, "Top Stocks")
-    ]
+    ])
     if is_bear_mode:
         sections.insert(0, (bear_etfs, "Top Bear Shorts"))
 
