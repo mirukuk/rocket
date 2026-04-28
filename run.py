@@ -1322,7 +1322,7 @@ def main():
 
     mode_str = "BEAR MODE" if is_bear_mode else "BULL MODE"
     
-    # Filter ETFs with BUY signal only for new sections
+    # Filter ETFs with BUY signal only
     etfs_with_signal = []
     for i, etf in enumerate(etfs[:15], 1):
         tk = etf['Ticker']
@@ -1331,26 +1331,28 @@ def main():
         if sig in ('BUY', 'STRONG BUY'):
             etfs_with_signal.append(etf)
     
-    # Filter Bull Longs with BUY signal only
-    bull_longs_buy = []
+    # Filter Bull Longs with BUY signal only, then merge with ETFs BUY Only
     for i, etf in enumerate(bull_etfs_res[:15], 1):
         tk = etf['Ticker']
+        # Skip if already in etfs_with_signal
+        if any(e['Ticker'] == tk for e in etfs_with_signal):
+            continue
         freq = all_freqs.get(tk, 0)
         sig = _signal(etf, freq, i, len(bull_etfs_res))
         if sig in ('BUY', 'STRONG BUY'):
-            bull_longs_buy.append(etf)
+            etfs_with_signal.append(etf)
     
     # sections: (results, title, exclude_cols)
     sections = []
     if etfs_with_signal:
-        sections.append((etfs_with_signal, "Top ETFs - BUY Only", ['Today', 'ATR%']))
+        # Sort by score descending
+        etfs_sorted = sorted(etfs_with_signal, key=lambda x: x.get('Score', 0), reverse=True)[:15]
+        sections.append((etfs_sorted, "Top ETFs - BUY Only", ['Today', 'ATR%']))
     sections.extend([
         (etfs, "All ETFs", []),
         (bull_etfs_res, "Top Bull Longs", []),
         (stocks, "Top Stocks", [])
     ])
-    if bull_longs_buy:
-        sections.insert(2, (bull_longs_buy, "Top Bull Longs - BUY Only", ['Today', 'ATR%']))
     if is_bear_mode:
         sections.insert(0, (bear_etfs, "Top Bear Shorts", []))
 
