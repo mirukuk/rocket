@@ -51,6 +51,9 @@ SHORT_INTEREST_THRESHOLD = 0.20  # 20% - exclude longs above this
 # Sector ETFs for rotation
 SECTOR_ETFS = ['XLK', 'XLE', 'XLV', 'XLY', 'XLF', 'XLRE']
 
+# Always-visible watchlist tickers
+WATCHLIST_TICKERS = ['SOXL', 'DRAM']
+
 
 def get_sector_rotation():
     """Compute relative strength of sector ETFs vs SPY"""
@@ -628,7 +631,7 @@ def score_ticker(ticker, close_df, vol_df, open_df, high_df, low_df):
     highs = (high_df[ticker].dropna() if ticker in high_df.columns else pd.Series(dtype=float))
     lows = (low_df[ticker].dropna() if ticker in low_df.columns else pd.Series(dtype=float))
 
-    if len(prices) < 20:
+    if len(prices) < 10:
         return None
 
     price = float(prices.iloc[-1])
@@ -843,7 +846,8 @@ def _signal(r, freq, rank, total):
 
 
 def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
-                 dl_limit=200, top_n=15, ensure_ticker=None, ticker_list=None):
+                 dl_limit=200, top_n=15, ensure_ticker=None, ticker_list=None,
+                 force_show=False):
     print(f"\n[{name}]")
     bench = bench_perf(bench_ticker)
     bench['name'] = name
@@ -870,9 +874,11 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
 
     dl = list(set(all_tickers[:dl_limit]) |
               ({ensure_ticker} if ensure_ticker else set()))
-    print(f"   Downloading {len(dl)} tickers (period=1y)...")
-    
-    down_data = bulk_download(dl, period="1y")
+    # Use longer period for watchlist to get enough data for proper MA calculations
+    period = "3mo" if "WATCHLIST" in name else "1y"
+    print(f"   Downloading {len(dl)} tickers (period={period})...")
+
+    down_data = bulk_download(dl, period=period)
     if len(down_data) < 5: 
         return [], bench
     close_df, vol_df, open_df, high_df, low_df = down_data
@@ -893,12 +899,15 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
             ref_data = dict(d)
 
         if d['Dollar Volume'] < min_dv:
-            continue
+            if 'WATCHLIST' in name:
+                pass  # Skip volume filter for watchlist
+            else:
+                continue
         # V2: Micro-cap filter - exclude low-priced high-vol stocks
         price = d.get('Price', 0)
         atr_pct = d.get('ATR %', 0)
         is_stock = 'STOCK' in name and not d.get('Leveraged', False)
-        if is_stock:
+        if is_stock and 'WATCHLIST' not in name:
             if price > 0 and price < MIN_PRICE:
                 continue  # Too cheap - pump-and-dump risk
             if atr_pct > MAX_ATR_PCT_STOCK:
@@ -906,10 +915,11 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
         if not d.get('Above MA20') and t != ensure_ticker:
             pass # V3 allows testing even if under MA20 if momentum is wild (ATR checks cover stops)
         if d['3D %'] <= 0 and d['5D %'] <= 0 and t != ensure_ticker:
-            continue
+            if 'WATCHLIST' not in name:
+                continue
 
-        # V2: Hard exclude stop-triggered
-        if d.get('Stop Triggered', False):
+        # V2: Hard exclude stop-triggered (skip for watchlist)
+        if d.get('Stop Triggered', False) and 'WATCHLIST' not in name:
             continue
         
         # V2: Short interest filter for stocks (skip high short interest - squeeze risk)
@@ -931,7 +941,7 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
         if "BEAR" in name:
             beats_bench = True # If Bear mode, allow inverse ETFs to pass easily to spot best
 
-        if beats_bench:
+        if beats_bench or 'WATCHLIST' in name:
             results.append(d)
 
     sys.stdout.write("\r" + " " * 50 + "\r")
@@ -1047,6 +1057,8 @@ td { font-size:.85rem; } tr:hover { background:#161b22; }
 .optional-col { display:none; }
 .toggle-btn { background:#30363d; color:#c9d1d9; border:1px solid #484f58; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:0.75rem; margin-bottom:8px; }
 .toggle-btn:hover { background:#484f58; }
+.sell-row { display:none; }
+.show-sell .sell-row { display:table-row; }
 """
 
 def _sig_html(sig):
@@ -1089,6 +1101,7 @@ def generate_html_v3(regime, sections, mode, all_freqs):
 <h1>V2 Master Router ({mode})</h1><p class="date">{now}</p>
 <div class="sig {regime_cls}">{regime['label']}</div>
 <button class="toggle-btn" onclick="document.querySelectorAll('.optional-col').forEach(el=>el.style.display=el.style.display==='none'?'table-cell':'none');this.textContent=this.textContent==='Show Details'?'Hide Details':'Show Details'">Show Details</button>
+<button class="toggle-btn" id="sellToggleBtn" onclick="document.querySelectorAll('table').forEach(tbl=>tbl.classList.toggle('show-sell'));this.textContent=this.textContent==='Show SELL'?'Hide SELL':'Show SELL'">Show SELL</button>
 <div class="metrics">
 <div class="m"><div class="ml">Regime Score</div><div class="mv">{regime['score']}/100</div></div>
 <div class="m"><div class="ml">Breadth Eq-W vs SPY</div><div class="mv">{regime['components'].get('rsp_vs_spy', 'N/A')}%</div></div>
@@ -1100,11 +1113,14 @@ def generate_html_v3(regime, sections, mode, all_freqs):
     def table(results, title, exclude_cols=None):
         if exclude_cols is None:
             exclude_cols = []
+        is_sell_section = 'SELL' in title
         rows = ""
         for i, r in enumerate(results[:15], 1):
             tk = r['Ticker']
             freq = all_freqs.get(tk, 0)
             s = _signal(r, freq, i, len(results))
+            
+            row_class = " class='sell-row'" if is_sell_section else ""
             
             cols = f"<td>{i}</td><td>{tk}</td>"
             if 'Today' not in exclude_cols:
@@ -1122,7 +1138,7 @@ def generate_html_v3(regime, sections, mode, all_freqs):
             cols += f"<td>{_tv_sig_html(osc, 'Oscillators (RSI, Stoch, CCI, MACD, ADX, AO)')}</td>"
             cols += f"<td>{_tv_sig_html(ma, 'Moving Averages (SMA, EMA alignment)')}</td>"
             
-            rows += f"<tr>{cols}</tr>"
+            rows += f"<tr{row_class}>{cols}</tr>"
         
         header = "<th>#</th><th>Ticker</th>"
         if 'Today' not in exclude_cols:
@@ -1640,9 +1656,21 @@ def main():
         ticker_list=BULL_ETFS
     )
     
+    # Watchlist: always show SOXL, DRAM (skip all filters for watchlist)
+    watchlist_res, watchlist_bench = run_screener(
+        "WATCHLIST",
+        finviz_urls=[],
+        bench_ticker="QQQ",
+        min_dv=0,
+        dl_limit=50,
+        ticker_list=WATCHLIST_TICKERS,
+        force_show=True  # Bypass all filters
+    )
+    
     print_table("STOCKS", stocks, "SOXL", stock_bench, all_freqs)
     print_table("BULL ETFs", etfs, "QQQ", etf_bench, all_freqs)
     print_table("TOP BULL LONGS", bull_etfs_res, "QQQ", bull_etf_bench, all_freqs)
+    print_table("WATCHLIST", watchlist_res, "QQQ", watchlist_bench, all_freqs)
 
     bear_etfs = []
     if is_bear_mode:
@@ -1696,6 +1724,18 @@ def main():
         if sig in ('BUY', 'STRONG BUY'):
             etfs_with_signal.append(etf)
     
+    # Filter SELL signal tickers (only SELL, not HOLD - for hidden tickers display)
+    # Only include from ETF/Stock sections, not from bull_etfs to avoid duplicates
+    all_sell_tickers = []
+    # Check stocks and etfs only (not bull_etfs_res to avoid dupes)
+    all_tickers_for_sell = stocks + etfs
+    for i, t in enumerate(all_tickers_for_sell, 1):
+        tk = t['Ticker']
+        freq = all_freqs.get(tk, 0)
+        sig = _signal(t, freq, i, len(all_tickers_for_sell))
+        if sig == 'SELL':  # Only true SELL signals
+            all_sell_tickers.append(t)
+    
     # sections: (results, title, exclude_cols)
     sections = []
     if etfs_with_signal:
@@ -1705,8 +1745,11 @@ def main():
     sections.extend([
         (etfs, "All ETFs", []),
         (bull_etfs_res, "Top Bull Longs", []),
-        (stocks, "Top Stocks", [])
+        (stocks, "Top Stocks", []),
+        (watchlist_res, "Watchlist", []),
     ])
+    if all_sell_tickers:
+        sections.append((all_sell_tickers, "SELL Signal Tickers", []))
     if is_bear_mode:
         sections.insert(0, (bear_etfs, "Top Bear Shorts", []))
 
