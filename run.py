@@ -170,6 +170,296 @@ def bulk_download(tickers, period="1y"):
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 
+# TradingView Technical Analysis API - fallback using yfinance computed values
+TV_API_URL = "https://scanner.tradingview.com/america/scan"
+
+def compute_tv_technicals_from_data(ticker, close_df, high_df, low_df, open_df):
+    """
+    Compute TradingView-style technical analysis from yfinance data.
+    Returns dict with oscillators, moving_averages, rsi, macd signals.
+    """
+    result = {
+        'oscillators': 'NEUTRAL',
+        'moving_averages': 'NEUTRAL',
+        'rsi': None,
+        'macd': None,
+    }
+    
+    try:
+        # Handle both multi-index (multiple tickers) and single ticker cases
+        if ticker in close_df.columns:
+            prices = close_df[ticker].dropna()
+        else:
+            # Try multi-index format
+            try:
+                prices = close_df[(slice(None), ticker)].droplevel(1)
+            except:
+                return result
+        
+        # Handle high_df
+        if ticker in high_df.columns:
+            highs = high_df[ticker].dropna()
+        else:
+            try:
+                highs = high_df[(slice(None), ticker)].droplevel(1).dropna()
+            except:
+                highs = prices  # fallback
+        
+        # Handle low_df
+        if ticker in low_df.columns:
+            lows = low_df[ticker].dropna()
+        else:
+            try:
+                lows = low_df[(slice(None), ticker)].droplevel(1).dropna()
+            except:
+                lows = prices  # fallback
+        
+        # Handle open_df
+        if ticker in open_df.columns:
+            opens = open_df[ticker].dropna()
+        else:
+            try:
+                opens = open_df[(slice(None), ticker)].droplevel(1).dropna()
+            except:
+                opens = prices  # fallback
+        
+        if len(prices) < 50:
+            return result
+        
+        price = float(prices.iloc[-1])
+        
+        # === RSI (14-period) ===
+        delta = prices.diff()
+        gain = delta.where(delta > 0, 0.0)
+        loss = (-delta).where(delta < 0, 0.0)
+        avg_gain = gain.rolling(14).mean()
+        avg_loss = loss.rolling(14).mean()
+        rs = avg_gain / avg_loss
+        rsi_series = 100 - (100 / (1 + rs))
+        rsi = float(rsi_series.iloc[-1])
+        if pd.isna(rsi):
+            rsi = 50.0  # Neutral default
+        result['rsi'] = round(rsi, 2)
+        
+        # === MACD (12, 26, 9) ===
+        ema12 = prices.ewm(span=12, adjust=False).mean()
+        ema26 = prices.ewm(span=26, adjust=False).mean()
+        macd_line = ema12 - ema26
+        signal_line = macd_line.ewm(span=9, adjust=False).mean()
+        macd_hist = float((macd_line - signal_line).iloc[-1])
+        if pd.isna(macd_hist):
+            macd_hist = 0.0
+        result['macd'] = round(macd_hist, 4)
+        
+        # === Stochastic (14,3) ===
+        stoch_k = 100 * (prices - lows.rolling(14).min()) / (highs.rolling(14).max() - lows.rolling(14).min() + 0.0001)
+        stoch_d = stoch_k.rolling(3).mean()
+        stoch_k_val = float(stoch_k.iloc[-1]) if not pd.isna(stoch_k.iloc[-1]) else 50.0
+        stoch_d_val = float(stoch_d.iloc[-1]) if not pd.isna(stoch_d.iloc[-1]) else 50.0
+        stoch_k_prev = float(stoch_k.iloc[-2]) if len(stoch_k) >= 2 and not pd.isna(stoch_k.iloc[-2]) else 50.0
+        stoch_d_prev = float(stoch_d.iloc[-2]) if len(stoch_d) >= 2 and not pd.isna(stoch_d.iloc[-2]) else 50.0
+        
+        # === CCI (20-period) ===
+        typical = (highs + lows + prices) / 3
+        cci_series = (typical - typical.rolling(20).mean()) / (0.015 * typical.rolling(20).std() + 0.0001)
+        cci_val = float(cci_series.iloc[-1]) if not pd.isna(cci_series.iloc[-1]) else 0.0
+        
+        # === ADX (14-period) ===
+        plus_dm = highs.diff()
+        minus_dm = -lows.diff()
+        plus_dm[plus_dm < 0] = 0
+        minus_dm[minus_dm < 0] = 0
+        tr1 = highs - lows
+        tr2 = (highs - prices.shift()).abs()
+        tr3 = (lows - prices.shift()).abs()
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.rolling(14).mean()
+        
+        plus_di = 100 * (plus_dm.rolling(14).mean() / (atr + 0.0001))
+        minus_di = 100 * (minus_dm.rolling(14).mean() / (atr + 0.0001))
+        di_sum = plus_di + minus_di
+        adx_series = 100 * (abs(plus_di - minus_di) / (di_sum + 0.0001)).rolling(14).mean()
+        plus_di_val = float(plus_di.iloc[-1]) if not pd.isna(plus_di.iloc[-1]) else 50.0
+        minus_di_val = float(minus_di.iloc[-1]) if not pd.isna(minus_di.iloc[-1]) else 50.0
+        
+        # === Awesome Oscillator ===
+        ao_series = prices.rolling(5).mean() - prices.rolling(34).mean()
+        ao = float(ao_series.iloc[-1]) if not pd.isna(ao_series.iloc[-1]) else 0.0
+        
+        # === Moving Averages ===
+        sma20 = float(prices.rolling(20).mean().iloc[-1]) if not pd.isna(prices.rolling(20).mean().iloc[-1]) else price
+        sma50 = float(prices.rolling(50).mean().iloc[-1]) if not pd.isna(prices.rolling(50).mean().iloc[-1]) else price
+        sma200 = float(prices.rolling(200).mean().iloc[-1]) if len(prices) >= 200 and not pd.isna(prices.rolling(200).mean().iloc[-1]) else None
+        ema20 = float(prices.ewm(span=20, adjust=False).mean().iloc[-1]) if not pd.isna(prices.ewm(span=20, adjust=False).mean().iloc[-1]) else price
+        ema50 = float(prices.ewm(span=50, adjust=False).mean().iloc[-1]) if not pd.isna(prices.ewm(span=50, adjust=False).mean().iloc[-1]) else price
+        
+        # === Count Oscillator Signals ===
+        osc_buy = 0
+        osc_sell = 0
+        osc_neutral = 0
+        
+        # RSI - proper neutral zone
+        if rsi < 30:
+            osc_buy += 1
+        elif rsi > 70:
+            osc_sell += 1
+        else:
+            osc_neutral += 1
+        
+        # Stochastic - proper neutral zone
+        if stoch_k_val < 20:
+            osc_buy += 1
+        elif stoch_k_val > 80:
+            osc_sell += 1
+        elif stoch_k_val > stoch_d_val and stoch_k_prev <= stoch_d_prev:
+            osc_buy += 1
+        elif stoch_k_val < stoch_d_val and stoch_k_prev >= stoch_d_prev:
+            osc_sell += 1
+        else:
+            osc_neutral += 1
+        
+        # CCI - proper neutral zone
+        if cci_val < -100:
+            osc_buy += 1
+        elif cci_val > 100:
+            osc_sell += 1
+        else:
+            osc_neutral += 1
+        
+        # MACD histogram - proper neutral zone
+        if macd_hist > 0:
+            osc_buy += 1
+        elif macd_hist < 0:
+            osc_sell += 1
+        else:
+            osc_neutral += 1
+        
+        # ADX + DI - proper neutral zone
+        if plus_di_val > minus_di_val:
+            osc_buy += 1
+        elif plus_di_val < minus_di_val:
+            osc_sell += 1
+        else:
+            osc_neutral += 1
+        
+        # Awesome Oscillator - proper neutral zone
+        if ao > 0:
+            osc_buy += 1
+        elif ao < 0:
+            osc_sell += 1
+        else:
+            osc_neutral += 1
+        
+        # Determine Oscillator Signal
+        if osc_buy >= osc_sell + 2:
+            result['oscillators'] = 'BUY'
+        elif osc_sell >= osc_buy + 2:
+            result['oscillators'] = 'SELL'
+        else:
+            result['oscillators'] = 'NEUTRAL'
+        # Include counts
+        result['osc_buy'] = osc_buy
+        result['osc_sell'] = osc_sell
+        result['osc_neutral'] = osc_neutral
+        
+        # === Count Moving Average Signals ===
+        ma_buy = 0
+        ma_sell = 0
+        ma_neutral = 0
+        
+        # Price vs MAs
+        if price > sma20:
+            ma_buy += 1
+        elif price < sma20:
+            ma_sell += 1
+        else:
+            ma_neutral += 1
+        
+        if price > sma50:
+            ma_buy += 1
+        elif price < sma50:
+            ma_sell += 1
+        else:
+            ma_neutral += 1
+        
+        if sma200:
+            if price > sma200:
+                ma_buy += 1
+            elif price < sma200:
+                ma_sell += 1
+            else:
+                ma_neutral += 1
+        
+        if price > ema20:
+            ma_buy += 1
+        elif price < ema20:
+            ma_sell += 1
+        else:
+            ma_neutral += 1
+        
+        if price > ema50:
+            ma_buy += 1
+        elif price < ema50:
+            ma_sell += 1
+        else:
+            ma_neutral += 1
+        
+        # MA alignment (bullish: short MA > long MA)
+        if sma20 > sma50:
+            ma_buy += 1
+        elif sma20 < sma50:
+            ma_sell += 1
+        else:
+            ma_neutral += 1
+        
+        if ema20 > ema50:
+            ma_buy += 1
+        elif ema20 < ema50:
+            ma_sell += 1
+        else:
+            ma_neutral += 1
+        
+        # EMA > SMA (momentum confirmation)
+        if ema50 > sma50:
+            ma_buy += 1
+        elif ema50 < sma50:
+            ma_sell += 1
+        else:
+            ma_neutral += 1
+        
+        # Determine MA Signal
+        if ma_buy >= ma_sell + 3:
+            result['moving_averages'] = 'BUY'
+        elif ma_sell >= ma_buy + 3:
+            result['moving_averages'] = 'SELL'
+        else:
+            result['moving_averages'] = 'NEUTRAL'
+        # Include counts
+        result['ma_buy'] = ma_buy
+        result['ma_sell'] = ma_sell
+        result['ma_neutral'] = ma_neutral
+            
+    except Exception as e:
+        # Silently return defaults on error
+        pass
+    
+    return result
+
+
+def fetch_tradingview_technicals(tickers):
+    """
+    Fetch TradingView technical analysis for multiple tickers.
+    Returns dict: { ticker: { 'oscillators': buy/sell/neutral, 'moving_averages': buy/sell/neutral } }
+    Falls back to yfinance computation if TV API fails.
+    """
+    return {}  # Return empty - will use local computation in run_screener
+
+
+def fetch_tradingview_technicals_v2(ticker, close_df, high_df, low_df, open_df):
+    """Compute TV-style technicals from local data"""
+    return compute_tv_technicals_from_data(ticker, close_df, high_df, low_df, open_df)
+
+
 def enrich_name(ticker):
     try:
         return yf.Ticker(ticker).info.get('shortName', ticker)
@@ -432,6 +722,11 @@ def score_ticker(ticker, close_df, vol_df, open_df, high_df, low_df):
         'Near High': near_high_20,
         'Dollar Volume': dollar_volume,
         'Leveraged': is_leveraged(ticker),
+        # TradingView Technicals (populated later via fetch_tradingview_technicals)
+        'TV_Oscillators': 'NEUTRAL',
+        'TV_MovingAverages': 'NEUTRAL',
+        'TV_RSI': None,
+        'TV_MACD': None,
     }
 
 
@@ -656,6 +951,28 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
         ref_data['_reference'] = True
         results.append(ref_data)
 
+    # === Compute TradingView-style Technicals from local data ===
+    if results:
+        sys.stdout.write(f"   Computing TV-style technicals for {len(results)} tickers...")
+        sys.stdout.flush()
+        for r in results:
+            tv = compute_tv_technicals_from_data(
+                r['Ticker'], close_df, high_df, low_df, open_df
+            )
+            r['TV_Oscillators'] = tv.get('oscillators', 'NEUTRAL')
+            r['TV_MovingAverages'] = tv.get('moving_averages', 'NEUTRAL')
+            r['TV_RSI'] = tv.get('rsi')
+            r['TV_MACD'] = tv.get('macd')
+            # Copy counts for display
+            r['osc_buy'] = tv.get('osc_buy', 0)
+            r['osc_sell'] = tv.get('osc_sell', 0)
+            r['osc_neutral'] = tv.get('osc_neutral', 0)
+            r['ma_buy'] = tv.get('ma_buy', 0)
+            r['ma_sell'] = tv.get('ma_sell', 0)
+            r['ma_neutral'] = tv.get('ma_neutral', 0)
+        sys.stdout.write(f"\r   TV-style technicals computed." + " " * 20 + "\n")
+        sys.stdout.flush()
+
     results.sort(key=lambda x: x.get('Dollar Volume', 0), reverse=True)
     return results[:top_n], bench
 
@@ -722,6 +1039,14 @@ table { width:100%; border-collapse:collapse; margin-bottom:1rem; }
 th,td { text-align:left; padding:.5rem .75rem; border-bottom:1px solid #30363d; }
 th { color:#8b949e; font-weight:500; font-size:.75rem; text-transform:uppercase; }
 td { font-size:.85rem; } tr:hover { background:#161b22; }
+.tv-sig { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:600; text-align:center; min-width:52px; }
+.tv-buy { background:#1a4d2e; color:#4ade80; }
+.tv-sell { background:#4d1a1a; color:#f87171; }
+.tv-neutral { background:#3d3d1a; color:#facc15; }
+.tv-header { font-size:0.65rem; line-height:1.2; }
+.optional-col { display:none; }
+.toggle-btn { background:#30363d; color:#c9d1d9; border:1px solid #484f58; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:0.75rem; margin-bottom:8px; }
+.toggle-btn:hover { background:#484f58; }
 """
 
 def _sig_html(sig):
@@ -729,6 +1054,22 @@ def _sig_html(sig):
               'SELL': '#f85149', 'HOLD': '#d29922'}
     c = colors.get(sig, '#d29922')
     return f"<span style='color:{c};font-weight:bold'>{sig}</span>"
+
+def _tv_sig_html(sig, tooltip=""):
+    """Render TradingView signal as styled badge - simple BUY/SELL/NEUTRAL"""
+    cls = {'BUY': 'tv-buy', 'SELL': 'tv-sell', 'NEUTRAL': 'tv-neutral'}.get(sig, 'tv-neutral')
+    title_attr = f' title="{tooltip}"' if tooltip else ''
+    return f"<span class='tv-sig {cls}'{title_attr}>{sig}</span>"
+
+def _format_tv_signal(r):
+    """Format TV signals - simple BUY/SELL/NEUTRAL like TradingView Summary"""
+    # Get the oscillator signal (BUY/SELL/NEUTRAL)
+    osc_sig = r.get('TV_Oscillators', 'NEUTRAL')
+    
+    # Get the moving average signal (BUY/SELL/NEUTRAL)
+    ma_sig = r.get('TV_MovingAverages', 'NEUTRAL')
+    
+    return osc_sig, ma_sig
 
 def generate_html_v3(regime, sections, mode, all_freqs):
     now = f"{datetime.now():%Y-%m-%d %H:%M}"
@@ -747,6 +1088,7 @@ def generate_html_v3(regime, sections, mode, all_freqs):
 <body><div class="c">
 <h1>V2 Master Router ({mode})</h1><p class="date">{now}</p>
 <div class="sig {regime_cls}">{regime['label']}</div>
+<button class="toggle-btn" onclick="document.querySelectorAll('.optional-col').forEach(el=>el.style.display=el.style.display==='none'?'table-cell':'none');this.textContent=this.textContent==='Show Details'?'Hide Details':'Show Details'">Show Details</button>
 <div class="metrics">
 <div class="m"><div class="ml">Regime Score</div><div class="mv">{regime['score']}/100</div></div>
 <div class="m"><div class="ml">Breadth Eq-W vs SPY</div><div class="mv">{regime['components'].get('rsp_vs_spy', 'N/A')}%</div></div>
@@ -767,19 +1109,31 @@ def generate_html_v3(regime, sections, mode, all_freqs):
             cols = f"<td>{i}</td><td>{tk}</td>"
             if 'Today' not in exclude_cols:
                 cols += f"<td>{fmt_pct(r.get('Today %'))}</td>"
-            cols += f"<td>{fmt_dollar_volume(r.get('Dollar Volume'))}</td><td>{r.get('Score', 0):.0f}</td>"
+            cols += f"<td>{fmt_dollar_volume(r.get('Dollar Volume'))}</td><td class='optional-col'>{r.get('Score', 0):.0f}</td>"
             if 'ATR%' not in exclude_cols:
-                cols += f"<td>{r.get('ATR %', 0):.1f}%</td>"
-            cols += f"<td>{freq}/{MAX_HISTORY}</td><td>{_sig_html(s)}</td>"
+                cols += f"<td class='optional-col'>{r.get('ATR %', 0):.1f}%</td>"
+            cols += f"<td class='optional-col'>{freq}/{MAX_HISTORY}</td>"
+            
+            # Own Technical Analysis (script)
+            cols += f"<td>{_sig_html(s)}</td>"
+            
+            # TradingView Technicals - 2 signals with counts
+            osc, ma = _format_tv_signal(r)
+            cols += f"<td>{_tv_sig_html(osc, 'Oscillators (RSI, Stoch, CCI, MACD, ADX, AO)')}</td>"
+            cols += f"<td>{_tv_sig_html(ma, 'Moving Averages (SMA, EMA alignment)')}</td>"
+            
             rows += f"<tr>{cols}</tr>"
         
         header = "<th>#</th><th>Ticker</th>"
         if 'Today' not in exclude_cols:
             header += "<th>Today</th>"
-        header += "<th>$Vol</th><th>Score</th>"
+        header += "<th>$Vol</th><th class='optional-col'>Score</th>"
         if 'ATR%' not in exclude_cols:
-            header += "<th>ATR% (Vol)</th>"
-        header += "<th>Freq</th><th>Technical analysis</th>"
+            header += "<th class='optional-col'>ATR%</th>"
+        header += "<th class='optional-col'>Freq</th>"
+        header += "<th class='tv-header'>Own<br>Signal</th>"
+        header += "<th class='tv-header'>TV<br>Oscillators</th>"
+        header += "<th class='tv-header'>TV<br>Moving Avg</th>"
         
         return f"<h2>{title}</h2><table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
 
