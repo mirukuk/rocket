@@ -3,7 +3,9 @@ name: Daily Market Analysis
 on:
   schedule:
     # Mon-Fri 10pm, 11pm, 12am, 1am HKT (14:00, 15:00, 16:00, 17:00 UTC)
+    # Mon-Fri 7am HKT (23:00 UTC Sun-Thu)
     - cron: '0 14,15,16,17 * * 1-5'
+    - cron: '0 23 * * 0-4'
   workflow_dispatch:
 
 jobs:
@@ -27,11 +29,11 @@ jobs:
         id: mode
         run: |
           HOUR=$(date -u +%H)
-          # 12am and 1am HKT (16:00, 17:00 UTC) - save history
+          # 12am, 1am, and 7am HKT (16:00, 17:00, 23:00 UTC) - save history
           # 10pm and 11pm HKT (14:00, 15:00 UTC) - no history
-          if [ "$HOUR" = "16" ] || [ "$HOUR" = "17" ]; then
+          if [ "$HOUR" = "16" ] || [ "$HOUR" = "17" ] || [ "$HOUR" = "23" ]; then
             echo "flag=--save-history" >> $GITHUB_OUTPUT
-            echo "Morning run (12am/1am HKT) - saving history"
+            echo "Morning run (12am/1am/7am HKT) - saving history"
           else
             echo "flag=--no-save-history" >> $GITHUB_OUTPUT
             echo "Evening run (10pm/11pm HKT) - no history save"
