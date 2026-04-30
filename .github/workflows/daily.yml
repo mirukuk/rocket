@@ -2,10 +2,8 @@ name: Daily Market Analysis
 
 on:
   schedule:
-    # Mon-Fri 11pm HKT (end of US market day)
-    - cron: '0 15 * * 1-5'
-    # Tue-Sat 6am HKT (morning recap, saves history)
-    - cron: '0 22 * * 1-5'
+    # Mon-Fri 10pm, 11pm, 12am, 1am HKT (14:00, 15:00, 16:00, 17:00 UTC)
+    - cron: '0 14,15,16,17 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -29,12 +27,14 @@ jobs:
         id: mode
         run: |
           HOUR=$(date -u +%H)
-          if [ "$HOUR" = "22" ]; then
+          # 12am and 1am HKT (16:00, 17:00 UTC) - save history
+          # 10pm and 11pm HKT (14:00, 15:00 UTC) - no history
+          if [ "$HOUR" = "16" ] || [ "$HOUR" = "17" ]; then
             echo "flag=--save-history" >> $GITHUB_OUTPUT
-            echo "Morning run (6am HKT) - saving history"
+            echo "Morning run (12am/1am HKT) - saving history"
           else
             echo "flag=--no-save-history" >> $GITHUB_OUTPUT
-            echo "Evening run (11pm HKT) - no history save"
+            echo "Evening run (10pm/11pm HKT) - no history save"
           fi
 
       - name: Run screener
