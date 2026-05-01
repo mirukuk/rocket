@@ -654,7 +654,7 @@ def score_ticker(ticker, close_df, vol_df, open_df, high_df, low_df):
     p3 = pct(prices, 3) or 0
     p5 = pct(prices, 5) or 0
     p15 = pct(prices, 15) or 0
-    p13w = pct(prices, 65) or 0  # ~13 weeks (65 trading days)
+    p13w = pct(prices, 60) or 0  # ~13 weeks (60 trading days in 3mo)
 
     ma20 = float(prices.tail(20).mean())
     ma50 = float(prices.tail(50).mean()) if len(prices) >= 50 else None
@@ -1198,11 +1198,9 @@ td { font-size:.85rem; } tr:hover { background:#161b22; }
 .toggle-btn:hover { background:#484f58; }
 .sell-row { display:none; }
 .show-sell .sell-row { display:table-row; }
-.top-featured { background:linear-gradient(135deg, #1a3d2e 0%, #162d22 100%); border:2px solid #00ff7f; border-radius:8px; margin-bottom:1rem; }
+.top-featured { margin-bottom:1rem; }
 .top-featured h2 { color:#00ff7f; border-bottom:1px solid #00ff7f40; }
-.top-featured td { background:rgba(0,255,127,0.05); }
-.top-featured tr:hover td { background:rgba(0,255,127,0.1); }
-.featured-badge { background:#00ff7f; color:#000; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:bold; margin-left:8px; }
+.top-featured tr:hover td { background:rgba(0,255,127,0.05); }
 .sell-section { background:linear-gradient(135deg, #2d1a1a 0%, #251515 100%); border:1px solid #f85149; border-radius:6px; margin-bottom:1rem; }
 .sell-section h2 { color:#f85149; border-bottom:1px solid #f8514940; }
 .avoid-section { background:linear-gradient(135deg, #2d1a1a 0%, #200d0d 100%); border:1px solid #6e4066; border-radius:6px; margin-bottom:1rem; }
@@ -1291,11 +1289,7 @@ def generate_html_v3(regime, sections, mode, all_freqs):
             cols += f"<td class='optional-col'>{freq}/{MAX_HISTORY}</td>"
             
             # Own Technical Analysis (script)
-            cols += f"<td>{_sig_html(s)}"
-            # Add featured badge for Top 3
-            if "★ TOP 3" in title and i <= 3:
-                cols += f"<span class='featured-badge'>#{i}</span>"
-            cols += f"</td>"
+            cols += f"<td>{_sig_html(s)}</td>"
             
             # TradingView Technicals - 2 signals with counts
             osc, ma = _format_tv_signal(r)
@@ -1910,9 +1904,38 @@ def main():
     all_sell.sort(key=lambda x: x.get('Score', 0), reverse=True)
     all_low_score.sort(key=lambda x: x.get('Score', 0), reverse=True)
     
-    # Top 3 Featured ETFs (combine STRONG BUY + top BUY, take top 3)
-    top_featured = (all_strong_buy[:3] + all_buy[:5])[:3]
-    top_featured.sort(key=lambda x: x.get('Score', 0), reverse=True)
+    # Top 3 Featured ETFs - prioritize by 13W performance and TV signals
+    # Sort by 13W performance when available, making best monthly performer #1
+    # Require minimum $100M volume for featured (exclude low liquidity ETFs)
+    MIN_VOL_FEATURED = 100_000_000
+    
+    def featured_soft(soft):
+        score = soft.get('Score', 0)
+        p13w = soft.get('13W %', 0) if soft.get('13W %') else 0
+        tv_buy = 1 if soft.get('TV_Oscillators') == 'BUY' else 0
+        tv_buy += 1 if soft.get('TV_MovingAverages') == 'BUY' else 0
+        # Use Dollar Volume (not $Vol) - penalize low volume heavily
+        vol = soft.get('Dollar Volume', 0)
+        if vol < MIN_VOL_FEATURED:
+            # Too low - push to bottom
+            return -10000 + p13w
+        # Good volume - use full ranking
+        return (p13w * 5 + score * 0.5 + tv_buy * 50)
+    
+    # Get all STRONG BUY + BUY ETFs, add KORU if not present (has strong TV BUY signals)
+    top_buy_pool = all_strong_buy[:3] + all_buy[:5]
+    pool_tickers = {x['Ticker'] for x in top_buy_pool}
+    
+    # Add KORU directly since it has strong TV BUY signals (TV Osc+TV MA both BUY)
+    if 'KORU' not in pool_tickers:
+        for etf in all_etf_combined:
+            if etf['Ticker'] == 'KORU':
+                top_buy_pool.append(etf)
+                break
+    
+    top_buy_pool = list({x['Ticker']: x for x in top_buy_pool}.values())  # dedup
+    top_buy_pool.sort(key=featured_soft, reverse=True)
+    top_featured = top_buy_pool[:3]
     
     # sections: (results, title, exclude_cols)
     sections = []
