@@ -99,9 +99,10 @@ BULL_ETFS = [
 ]
 
 ETF_URL = "https://finviz.com/screener.ashx?v=411&f=ind_exchangetradedfund%2Csh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&o=-volume"
-STOCK_URL = "https://finviz.com/screener.ashx?v=411&f=sh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_13w20o%2Cta_perf2_26w50o&ft=3&o=-volume"
-STOCK_URL2 = "https://finviz.com/screener.ashx?v=411&f=sh_avgvol_o400%2Csh_price_o10%2Cta_change_u%2Cta_perf_1w10o%2Cta_sma20_pa&ft=3&o=-perf1w"
-STOCK_URL3 = "https://finviz.com/screener.ashx?v=411&f=sh_avgvol_o400%2Csh_price_o10%2Cta_change_u%2Cta_changeopen_u%2Cta_perf_1w10o%2Cta_sma20_pa&ft=3&o=-perf1w"
+# Stock screener URLs - simplified filters for more results
+STOCK_URL = "https://finviz.com/screener.ashx?v=152&f=sh_price_o10,ta_change_u,ta_perf_13w50o&ft=4&o=-perf13w"
+STOCK_URL2 = "https://finviz.com/screener.ashx?v=152&f=sh_avgvol_o200,sh_price_o10,ta_change_u&ft=4&o=-volume"
+STOCK_URL3 = "https://finviz.com/screener.ashx?v=152&f=sh_price_o10,ta_change_u,ta_perf_1w10o&ft=4&o=-perf1w"
 
 SEP = "-" * 72
 SEP2 = "=" * 72
@@ -136,7 +137,8 @@ def fetch_finviz(url, limit=200):
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         r.raise_for_status()
         seen = set()
-        return [t for t in re.findall(r'quote\.ashx\?t=([A-Z]+)', r.text)
+        # Updated pattern for new Finviz HTML structure
+        return [t for t in re.findall(r"quote\?t=([A-Z]+)", r.text)
                 if not (t in seen or seen.add(t))][:limit]
     except Exception as e:
         print(f"   Finviz error: {e}")
@@ -1058,10 +1060,11 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
                 continue  # Too much short interest - avoid
 
         if 'STOCK' in name:
+            # Stocks: only require beating benchmark on ONE time frame (relaxed from ALL)
             beats_bench = (
                 _is_today_leader(d, bench['perf_today'])
-                and d['5D %'] > bench['perf_5d']
-                and d['15D %'] > bench['perf_15d']
+                or d['5D %'] > bench['perf_5d']
+                or d['15D %'] > bench['perf_15d']
             )
         else:
             beats_bench = (d['5D %'] > bench['perf_5d']
