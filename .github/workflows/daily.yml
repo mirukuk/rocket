@@ -40,7 +40,7 @@ jobs:
           fi
 
       - name: Run screener
-        run: python run_all.py ${{ steps.mode.outputs.flag }}
+        run: python run.py
 
       - name: Commit and push changes
         run: |
