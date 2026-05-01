@@ -499,9 +499,10 @@ def bench_perf(ticker):
             'perf_today': perf_today,
             'perf_5d': pct(h['Close'], 5) or 0,
             'perf_15d': pct(h['Close'], 15) or 0,
+            'perf_13w': pct(h['Close'], 60) or 0,  # ~13 weeks (60 trading days in 3mo)
         }
     except Exception:
-        return {'ticker': ticker, 'perf_today': None, 'perf_5d': 0, 'perf_15d': 0}
+        return {'ticker': ticker, 'perf_today': None, 'perf_5d': 0, 'perf_15d': 0, 'perf_13w': 0}
 
 
 def _is_today_leader(r, bench_today, margin=TODAY_OUTPERFORMANCE_MARGIN):
@@ -653,6 +654,7 @@ def score_ticker(ticker, close_df, vol_df, open_df, high_df, low_df):
     p3 = pct(prices, 3) or 0
     p5 = pct(prices, 5) or 0
     p15 = pct(prices, 15) or 0
+    p13w = pct(prices, 65) or 0  # ~13 weeks (65 trading days)
 
     ma20 = float(prices.tail(20).mean())
     ma50 = float(prices.tail(50).mean()) if len(prices) >= 50 else None
@@ -709,6 +711,7 @@ def score_ticker(ticker, close_df, vol_df, open_df, high_df, low_df):
         '3D %': p3,
         '5D %': p5,
         '15D %': p15,
+        '13W %': p13w,
         'MA20': round(ma20, 2),
         'MA50': round(ma50, 2) if ma50 else None,
         'MA200': round(ma200, 2) if ma200 else None,
@@ -742,27 +745,31 @@ def calc_composite(r, bench, regime_level=4):
     p3 = clamp(r.get('3D %', 0) or 0)
     p5 = clamp(r.get('5D %', 0) or 0)
     p15 = clamp(r.get('15D %', 0) or 0)
+    p13w = clamp(r.get('13W %', 0) or 0)  # 13-week (month) performance
     vs = r.get('Vol Surge', 1.0)
     atr_pct = r.get('ATR %', 5.0)
 
     # V2: Regime-adaptive momentum weights
     if regime_level >= 4:  # FULL RISK ON
-        w3, w5, w15 = 3.5, 2.0, 0.8
+        w3, w5, w15, w13w = 3.5, 2.0, 0.8, 1.5
     elif regime_level == 3:  # MODERATE
-        w3, w5, w15 = 3.0, 2.0, 1.0
+        w3, w5, w15, w13w = 3.0, 2.0, 1.0, 1.2
     elif regime_level == 2:  # CAUTIOUS - weight longer term
-        w3, w5, w15 = 1.5, 2.0, 2.0
+        w3, w5, w15, w13w = 1.5, 2.0, 2.0, 1.5
     else:  # RISK OFF
-        w3, w5, w15 = -1.0, -1.5, -2.0
+        w3, w5, w15, w13w = -1.0, -1.5, -2.0, -1.0
 
-    abs_mom = p3 * w3 + p5 * w5 + p15 * w15
+    abs_mom = p3 * w3 + p5 * w5 + p15 * w15 + p13w * w13w
 
     rel_vs_5 = p5 - bench.get('perf_5d', 0)
     rel_vs_15 = p15 - bench.get('perf_15d', 0)
+    rel_vs_13w = p13w - bench.get('perf_13w', 0)
     if rel_vs_5 > 5:
         abs_mom += rel_vs_5 * 1.5
     if rel_vs_15 > 10:
         abs_mom += rel_vs_15 * 0.8
+    if rel_vs_13w > 15:
+        abs_mom += rel_vs_13w * 1.0
 
     if r.get('Trend Quality'):
         abs_mom *= 1.20
@@ -984,7 +991,7 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
     bench['name'] = name
     print(
         f"   {bench_ticker} - Today: {fmt_pct(bench['perf_today'])} | "
-        f"5D: {bench['perf_5d']:+.2f}% | 15D: {bench['perf_15d']:+.2f}%"
+        f"5D: {bench['perf_5d']:+.2f}% | 15D: {bench['perf_15d']:+.2f}% | 13W: {bench['perf_13w']:+.2f}%"
     )
 
     all_tickers = []
