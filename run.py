@@ -1291,9 +1291,10 @@ def generate_html_v3(regime, sections, mode, all_freqs):
             # Own Technical Analysis (script)
             cols += f"<td>{_sig_html(s)}</td>"
             
-            # TradingView Technicals - 2 signals with counts
+            # TradingView Technicals - hide Oscillators in TOP 3 section
             osc, ma = _format_tv_signal(r)
-            cols += f"<td>{_tv_sig_html(osc, 'Oscillators (RSI, Stoch, CCI, MACD, ADX, AO)')}</td>"
+            if "★ TOP 3" not in title:
+                cols += f"<td>{_tv_sig_html(osc, 'Oscillators (RSI, Stoch, CCI, MACD, ADX, AO)')}</td>"
             cols += f"<td>{_tv_sig_html(ma, 'Moving Averages (SMA, EMA alignment)')}</td>"
             
             # Position Size - no color, just text
@@ -1309,7 +1310,9 @@ def generate_html_v3(regime, sections, mode, all_freqs):
             header += "<th class='optional-col'>ATR%</th>"
         header += "<th class='optional-col'>Freq</th>"
         header += "<th class='tv-header'>Signal</th>"
-        header += "<th class='tv-header'>TV<br>Oscillators</th>"
+        # Only show TV Oscillators column if NOT in TOP 3 section
+        if "★ TOP 3" not in title:
+            header += "<th class='tv-header'>TV<br>Oscillators</th>"
         header += "<th class='tv-header'>TV<br>Moving Avg</th>"
         header += "<th class='tv-header'>Today<br>Buy</th>"
         
