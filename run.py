@@ -1188,6 +1188,15 @@ td { font-size:.85rem; } tr:hover { background:#161b22; }
 .toggle-btn:hover { background:#484f58; }
 .sell-row { display:none; }
 .show-sell .sell-row { display:table-row; }
+.top-featured { background:linear-gradient(135deg, #1a3d2e 0%, #162d22 100%); border:2px solid #00ff7f; border-radius:8px; margin-bottom:1rem; }
+.top-featured h2 { color:#00ff7f; border-bottom:1px solid #00ff7f40; }
+.top-featured td { background:rgba(0,255,127,0.05); }
+.top-featured tr:hover td { background:rgba(0,255,127,0.1); }
+.featured-badge { background:#00ff7f; color:#000; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:bold; margin-left:8px; }
+.sell-section { background:linear-gradient(135deg, #2d1a1a 0%, #251515 100%); border:1px solid #f85149; border-radius:6px; margin-bottom:1rem; }
+.sell-section h2 { color:#f85149; border-bottom:1px solid #f8514940; }
+.avoid-section { background:linear-gradient(135deg, #2d1a1a 0%, #200d0d 100%); border:1px solid #6e4066; border-radius:6px; margin-bottom:1rem; }
+.avoid-section h2 { color:#f87171; border-bottom:1px solid #6e406640; }
 """
 
 def _sig_html(sig):
@@ -1242,6 +1251,16 @@ def generate_html_v3(regime, sections, mode, all_freqs):
     def table(results, title, exclude_cols=None):
         if exclude_cols is None:
             exclude_cols = []
+        
+        # Determine section styling class
+        section_class = ""
+        if "★ TOP 3" in title:
+            section_class = "top-featured"
+        elif "SELL Signal" in title:
+            section_class = "sell-section"
+        elif "Score ≤ 0" in title:
+            section_class = "avoid-section"
+        
         is_sell_section = 'SELL' in title
         rows = ""
         for i, r in enumerate(results[:15], 1):
@@ -1262,7 +1281,11 @@ def generate_html_v3(regime, sections, mode, all_freqs):
             cols += f"<td class='optional-col'>{freq}/{MAX_HISTORY}</td>"
             
             # Own Technical Analysis (script)
-            cols += f"<td>{_sig_html(s)}</td>"
+            cols += f"<td>{_sig_html(s)}"
+            # Add featured badge for Top 3
+            if "★ TOP 3" in title and i <= 3:
+                cols += f"<span class='featured-badge'>#{i}</span>"
+            cols += f"</td>"
             
             # TradingView Technicals - 2 signals with counts
             osc, ma = _format_tv_signal(r)
@@ -1286,7 +1309,8 @@ def generate_html_v3(regime, sections, mode, all_freqs):
         header += "<th class='tv-header'>TV<br>Moving Avg</th>"
         header += "<th class='tv-header'>Today<br>Buy</th>"
         
-        return f"<h2>{title}</h2><table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
+        section_attrs = f" class='{section_class}'" if section_class else ""
+        return f"<h2>{title}</h2><table{section_attrs}><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
 
     for item in sections:
         if len(item) == 3:
@@ -1841,52 +1865,70 @@ def main():
 
     mode_str = "BEAR MODE" if is_bear_mode else "BULL MODE"
     
-    # Filter ETFs with BUY signal only
-    etfs_with_signal = []
-    for i, etf in enumerate(etfs[:15], 1):
-        tk = etf['Ticker']
-        freq = all_freqs.get(tk, 0)
-        sig = _signal(etf, freq, i, len(etfs))
-        if sig in ('BUY', 'STRONG BUY'):
-            etfs_with_signal.append(etf)
+    # Combine all ETFs for signal grouping
+    all_etf_combined = list(etfs) + list(bull_etfs_res)
     
-    # Filter Bull Longs with BUY signal only, then merge with ETFs BUY Only
-    for i, etf in enumerate(bull_etfs_res[:15], 1):
-        tk = etf['Ticker']
-        # Skip if already in etfs_with_signal
-        if any(e['Ticker'] == tk for e in etfs_with_signal):
-            continue
-        freq = all_freqs.get(tk, 0)
-        sig = _signal(etf, freq, i, len(bull_etfs_res))
-        if sig in ('BUY', 'STRONG BUY'):
-            etfs_with_signal.append(etf)
+    # Categorize all tickers by signal
+    all_strong_buy = []
+    all_buy = []
+    all_hold = []
+    all_sell = []
+    all_low_score = []
     
-    # Filter SELL signal tickers (only SELL, not HOLD - for hidden tickers display)
-    # Only include from ETF/Stock sections, not from bull_etfs to avoid duplicates
-    all_sell_tickers = []
-    # Check stocks and etfs only (not bull_etfs_res to avoid dupes)
-    all_tickers_for_sell = stocks + etfs
-    for i, t in enumerate(all_tickers_for_sell, 1):
+    for i, t in enumerate(all_etf_combined, 1):
         tk = t['Ticker']
         freq = all_freqs.get(tk, 0)
-        sig = _signal(t, freq, i, len(all_tickers_for_sell))
-        if sig == 'SELL':  # Only true SELL signals
-            all_sell_tickers.append(t)
+        sig = _signal(t, freq, i, len(all_etf_combined))
+        score = t.get('Score', 0)
+        
+        if sig == 'STRONG BUY':
+            all_strong_buy.append(t)
+        elif sig == 'BUY':
+            all_buy.append(t)
+        elif sig == 'HOLD':
+            all_hold.append(t)
+        elif sig == 'SELL':
+            all_sell.append(t)
+        
+        if score <= 0:
+            all_low_score.append(t)
+    
+    # Sort each category by score descending
+    all_strong_buy.sort(key=lambda x: x.get('Score', 0), reverse=True)
+    all_buy.sort(key=lambda x: x.get('Score', 0), reverse=True)
+    all_hold.sort(key=lambda x: x.get('Score', 0), reverse=True)
+    all_sell.sort(key=lambda x: x.get('Score', 0), reverse=True)
+    all_low_score.sort(key=lambda x: x.get('Score', 0), reverse=True)
+    
+    # Top 3 Featured ETFs (combine STRONG BUY + top BUY, take top 3)
+    top_featured = (all_strong_buy[:3] + all_buy[:5])[:3]
+    top_featured.sort(key=lambda x: x.get('Score', 0), reverse=True)
     
     # sections: (results, title, exclude_cols)
     sections = []
-    if etfs_with_signal:
-        # Sort by score descending
-        etfs_sorted = sorted(etfs_with_signal, key=lambda x: x.get('Score', 0), reverse=True)[:15]
-        sections.append((etfs_sorted, "Top ETFs - BUY Only", ['Today', 'ATR%']))
+    
+    # Top 3 Featured ETFs - highlighted section
+    if top_featured:
+        sections.append((top_featured, "★ TOP 3 FEATURED ETFS ★", ['Today', 'ATR%']))
+    
+    # ALL ETFs section - shows everything
+    all_etfs_sorted = sorted(all_etf_combined, key=lambda x: x.get('Score', 0), reverse=True)
+    if all_etfs_sorted:
+        sections.append((all_etfs_sorted, "ALL ETFs", []))
+    
+    # Other sections
     sections.extend([
-        (etfs, "All ETFs", []),
         (bull_etfs_res, "Top Bull Longs", []),
         (stocks, "Top Stocks", []),
         (watchlist_res, "Watchlist", []),
     ])
-    if all_sell_tickers:
-        sections.append((all_sell_tickers, "SELL Signal Tickers", []))
+    
+    # SELL Signals section only
+    if all_sell:
+        sections.append((all_sell, "SELL Signals", []))
+    if all_low_score:
+        sections.append((all_low_score, "Score ≤ 0 (Avoid)", []))
+    
     if is_bear_mode:
         sections.insert(0, (bear_etfs, "Top Bear Shorts", []))
 
