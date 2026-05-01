@@ -52,7 +52,7 @@ SHORT_INTEREST_THRESHOLD = 0.20  # 20% - exclude longs above this
 SECTOR_ETFS = ['XLK', 'XLE', 'XLV', 'XLY', 'XLF', 'XLRE']
 
 # Always-visible watchlist tickers
-WATCHLIST_TICKERS = ['SOXL', 'DRAM']
+WATCHLIST_TICKERS = ['SOXL', 'DRAM', 'KORU']
 
 
 def get_sector_rotation():
@@ -809,7 +809,7 @@ def calc_composite(r, bench, regime_level=4):
     return final_score
 
 
-def _signal(r, freq, rank, total):
+def _signal(r, freq, rank, total, regime_level=4):
     score = r.get('Score', 0)
     vs = r.get('Vol Surge', 1.0)
     acc = r.get('Acceleration', False)
@@ -819,12 +819,9 @@ def _signal(r, freq, rank, total):
     if score <= 0:
         return 'SELL'
     top_half = rank <= max(total // 2, 1)
-    # V2: Logarithmic frequency bonus - rewards persistent leaders
-    freq_bonus = 1.0 + 0.3 * np.log(1 + freq) if freq >= MIN_FREQ_FOR_BONUS else 1.0
     has_momentum = vs > 1.3 or acc
-    # V2: Two-tier entry system
     is_conviction = (score > 150 and freq >= 6 and atr_pct < 8.0 and 
-                      not r.get('Overextended', False))
+                 not r.get('Overextended', False))
     is_speculative = (score > 80 and freq >= 4 and acc)
     if is_conviction:
         return 'STRONG BUY'
@@ -843,6 +840,138 @@ def _signal(r, freq, rank, total):
     if is_speculative:
         return 'BUY'
     return 'HOLD'
+
+
+def _position_size(r, freq, signal, regime_level=4, is_bear_mode=False):
+    """
+    Calculate position size: use BOTH Score AND TradingView signals for differentiation.
+    Each ticker gets a unique % based on multiple factors.
+    Best score gets full size, others get 10% less.
+    """
+    # Get TradingView signals
+    tv_osc = r.get('TV_Oscillators', 'NEUTRAL')
+    tv_ma = r.get('TV_MovingAverages', 'NEUTRAL')
+    tv_rsi = r.get('TV_RSI', 50)
+    
+    # Convert TV signals to numeric scores
+    tv_score = 0
+    if tv_osc == 'BUY': tv_score += 15
+    elif tv_osc == 'SELL': tv_score -= 15
+    if tv_ma == 'BUY': tv_score += 15
+    elif tv_ma == 'SELL': tv_score -= 15
+    # RSI extremes bonus/penalty
+    if tv_rsi and tv_rsi < 30: tv_score += 10  # Oversold
+    elif tv_rsi and tv_rsi > 70: tv_score -= 10  # Overbought
+    
+    score = r.get('Score', 0)
+    atr_pct = r.get('ATR %', 5.0)
+    
+    # Base from our signal
+    if signal == 'STRONG BUY':
+        base = 20
+    elif signal == 'BUY':
+        base = 10
+    else:
+        return '5%'
+    
+    # Score multiplier - more granular
+    if score >= 150:
+        score_mult = 2.5
+    elif score >= 120:
+        score_mult = 2.0
+    elif score >= 100:
+        score_mult = 1.5
+    elif score >= 80:
+        score_mult = 1.2
+    elif score >= 60:
+        score_mult = 1.0
+    elif score >= 40:
+        score_mult = 0.8
+    else:
+        score_mult = 0.5
+    
+    # Frequency multiplier
+    if freq >= 8:
+        freq_mult = 1.2
+    elif freq >= 6:
+        freq_mult = 1.15
+    elif freq >= 4:
+        freq_mult = 1.1
+    elif freq >= 2:
+        freq_mult = 1.0
+    else:
+        freq_mult = 0.9
+    
+    # ATR multiplier
+    if atr_pct <= 3:
+        atr_mult = 1.1
+    elif atr_pct <= 5:
+        atr_mult = 1.0
+    elif atr_pct <= 8:
+        atr_mult = 0.9
+    else:
+        atr_mult = 0.7
+    
+    # Regime multiplier
+    if regime_level >= 4:
+        regime_mult = 1.2
+    elif regime_level == 3:
+        regime_mult = 1.0
+    elif regime_level == 2:
+        regime_mult = 0.6
+    else:
+        regime_mult = 0.3
+    
+    # Bear mode
+    bear_mult = 0.5 if is_bear_mode else 1.0
+    
+    # Calculate raw size
+    raw = base * score_mult * freq_mult * atr_mult * regime_mult * bear_mult
+    
+    # Add TV signal bonus (before clamping)
+    final = raw + tv_score
+    
+    # Clamp to valid sizes with fine-grained differentiation
+    if final >= 60:
+        return '50%'
+    elif final >= 45:
+        return '40%'
+    elif final >= 32:
+        return '30%'
+    elif final >= 22:
+        return '25%'
+    elif final >= 14:
+        return '20%'
+    elif final >= 8:
+        return '15%'
+    elif final >= 4:
+        return '10%'
+    else:
+        return '5%'
+
+
+def _get_adjusted_size(r, rank_in_list, best_score, freq, signal, regime_level=4, is_bear_mode=False):
+    """
+    Get position size with rank adjustment.
+    Best score (rank 1) gets full size, others get 10% less.
+    """
+    base_size = _position_size(r, freq, signal, regime_level, is_bear_mode)
+    
+    # Remove % sign and convert to number
+    if base_size.endswith('%'):
+        size_val = int(base_size.replace('%', ''))
+    else:
+        return base_size
+    
+    # If not the best score (rank > 1), reduce by 10%
+    if rank_in_list > 1 and size_val > 10:
+        new_size = size_val - 10
+        # Ensure minimum 5%
+        if new_size < 5:
+            new_size = 5
+        return f'{new_size}%'
+    
+    return base_size
 
 
 def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
@@ -1118,7 +1247,9 @@ def generate_html_v3(regime, sections, mode, all_freqs):
         for i, r in enumerate(results[:15], 1):
             tk = r['Ticker']
             freq = all_freqs.get(tk, 0)
-            s = _signal(r, freq, i, len(results))
+            s = _signal(r, freq, i, len(results), regime.get('level', 4))
+            best_score = results[0].get('Score', 0) if results else 0
+            size = _get_adjusted_size(r, i, best_score, freq, s, regime.get('level', 4), 'BEAR' in mode)
             
             row_class = " class='sell-row'" if is_sell_section else ""
             
@@ -1138,6 +1269,9 @@ def generate_html_v3(regime, sections, mode, all_freqs):
             cols += f"<td>{_tv_sig_html(osc, 'Oscillators (RSI, Stoch, CCI, MACD, ADX, AO)')}</td>"
             cols += f"<td>{_tv_sig_html(ma, 'Moving Averages (SMA, EMA alignment)')}</td>"
             
+            # Position Size - no color, just text
+            cols += f"<td>{size}</td>"
+            
             rows += f"<tr{row_class}>{cols}</tr>"
         
         header = "<th>#</th><th>Ticker</th>"
@@ -1147,9 +1281,10 @@ def generate_html_v3(regime, sections, mode, all_freqs):
         if 'ATR%' not in exclude_cols:
             header += "<th class='optional-col'>ATR%</th>"
         header += "<th class='optional-col'>Freq</th>"
-        header += "<th class='tv-header'>Own<br>Signal</th>"
+        header += "<th class='tv-header'>Signal</th>"
         header += "<th class='tv-header'>TV<br>Oscillators</th>"
         header += "<th class='tv-header'>TV<br>Moving Avg</th>"
+        header += "<th class='tv-header'>Today<br>Buy</th>"
         
         return f"<h2>{title}</h2><table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
 
@@ -1537,7 +1672,7 @@ def print_regime(regime):
     if 'vix' in c:
         print(f"  VIX: {c['vix']} ({c.get('vix_level', '')})")
 
-def print_table(title, results, bench_ticker, bench, all_freqs):
+def print_table(title, results, bench_ticker, bench, all_freqs, regime_level=4, is_bear_mode=False):
     print(f"\n{SEP}")
     print(f"  {title}")
     print(f"{SEP}")
@@ -1549,18 +1684,20 @@ def print_table(title, results, bench_ticker, bench, all_freqs):
         print("  No results")
         return
 
-    hdr = f"  {'#':>3}  {'Ticker':<7} {'Today':>7} {'$Vol':>10} {'Score':>7} {'ATR%':>7} {'Freq':>6} {'Technical analysis':<16}"
+    hdr = f"  {'#':>3}  {'Ticker':<7} {'Today':>7} {'$Vol':>10} {'Score':>7} {'ATR%':>7} {'Freq':>6} {'Signal':<12} {'Size':>7}"
     print(hdr)
-    print("  " + "-" * 75)
+    print("  " + "-" * 82)
 
     for i, r in enumerate(results[:15], 1):
         tk = r['Ticker']
         freq = all_freqs.get(tk, 0)
-        sig = _signal(r, freq, i, len(results))
+        sig = _signal(r, freq, i, len(results), regime_level)
+        best_score = results[0].get('Score', 0) if results else 0
+        size = _get_adjusted_size(r, i, best_score, freq, sig, regime_level, is_bear_mode)
         print(f"  {i:>3}  {tk:<7} {fmt_pct(r.get('Today %')):>7} "
               f"{fmt_dollar_volume(r.get('Dollar Volume')):>10} "
               f"{r.get('Score', 0):>7.0f} {r.get('ATR %', 0):>6.1f}% "
-              f"{freq:>4}/{MAX_HISTORY} {sig:<12}")
+              f"{freq:>4}/{MAX_HISTORY} {sig:<12} {size:>7}")
 
 def print_portfolio_v3(picks, is_bear, all_freqs):
     print(f"\n{SEP2}")
@@ -1667,10 +1804,10 @@ def main():
         force_show=True  # Bypass all filters
     )
     
-    print_table("STOCKS", stocks, "SOXL", stock_bench, all_freqs)
-    print_table("BULL ETFs", etfs, "QQQ", etf_bench, all_freqs)
-    print_table("TOP BULL LONGS", bull_etfs_res, "QQQ", bull_etf_bench, all_freqs)
-    print_table("WATCHLIST", watchlist_res, "QQQ", watchlist_bench, all_freqs)
+    print_table("STOCKS", stocks, "SOXL", stock_bench, all_freqs, regime['level'], is_bear_mode)
+    print_table("BULL ETFs", etfs, "QQQ", etf_bench, all_freqs, regime['level'], is_bear_mode)
+    print_table("TOP BULL LONGS", bull_etfs_res, "QQQ", bull_etf_bench, all_freqs, regime['level'], is_bear_mode)
+    print_table("WATCHLIST", watchlist_res, "QQQ", watchlist_bench, all_freqs, regime['level'], is_bear_mode)
 
     bear_etfs = []
     if is_bear_mode:
@@ -1682,7 +1819,7 @@ def main():
             min_dv=5e6, dl_limit=80,
             ticker_list=BEAR_ETFS
         )
-        print_table("BEAR ETFs", bear_etfs, "SPY", etf_bench_bear, all_freqs)
+        print_table("BEAR ETFs", bear_etfs, "SPY", etf_bench_bear, all_freqs, regime['level'], is_bear_mode)
         print_portfolio_v3(bear_etfs, True, all_freqs)
     else:
         all_picks = sorted(stocks + etfs, key=lambda x: x.get('Score',0), reverse=True)
