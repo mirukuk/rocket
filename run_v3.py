@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Unified Screener V4 — The "Master Router" for Extreme Returns
+Unified Screener V3 — The "Master Router" for 200% Returns
 
-Enhancements in V4:
-- Trailing Stop After T1 Hit (breakeven on remaining 2/3)
-- Pullback Entry Filter (RSI < 50, avoid chasing extended)
-- Short Squeeze Candidate Detection (high short interest + covering)
-- Volatility-Adjusted Allocation (VIX extremes mapped to regime_mult)
+Enhancements in V3:
+- Fully Autonomous Master Router (auto-switches to Bear Screener in Risk-Off)
+- Dynamic ATR-based Stop Losses and Position Sizing
+- Market Breadth Regime Modifier (RSP vs SPY)
+- Pyramiding logic indicators for pressing winners
 
 Usage:
-  python run.py
+  python run_all_console_v3.py
 """
 
 import sys, os, json, re, argparse
@@ -47,11 +47,6 @@ SCORE_CEILING = 300
 SCORE_FLOOR = -200
 MIN_FREQ_FOR_BONUS = 4
 SHORT_INTEREST_THRESHOLD = 0.20  # 20% - exclude longs above this
-
-# V4 ENHANCEMENTS
-PULLBACK_RSI_MAX = 50  # Max RSI for pullback entry
-SQUEEZE_SHORT_MIN = 0.15  # Min 15% short interest for squeeze candidate
-SQUEEZE_BONUS = 30  # Score bonus for squeeze candidates
 
 # Sector ETFs for rotation
 SECTOR_ETFS = ['XLK', 'XLE', 'XLV', 'XLY', 'XLF', 'XLRE']
@@ -260,15 +255,6 @@ def compute_tv_technicals_from_data(ticker, close_df, high_df, low_df, open_df):
         if pd.isna(macd_hist):
             macd_hist = 0.0
         result['macd'] = round(macd_hist, 4)
-        
-        # V4: Entry Quality based on RSI
-        # Pullback = RSI < 50 (ideal entry), Breakout = RSI 50-60, Momentum = RSI > 60
-        if rsi < PULLBACK_RSI_MAX:
-            result['entry_quality'] = 'PULLBACK'
-        elif rsi < 60:
-            result['entry_quality'] = 'BREAKOUT'
-        else:
-            result['entry_quality'] = 'MOMENTUM'
         
         # === Stochastic (14,3) ===
         stoch_k = 100 * (prices - lows.rolling(14).min()) / (highs.rolling(14).max() - lows.rolling(14).min() + 0.0001)
@@ -499,27 +485,6 @@ def get_short_interest(ticker):
         return 0
 
 
-def get_short_squeeze_data(ticker):
-    """Fetch short interest metrics for squeeze detection"""
-    try:
-        info = yf.Ticker(ticker).info
-        short_pct = info.get('shortPercentOfFloat', 0) or 0
-        days_to_cover = info.get('daysToCover', 0) or 0
-        short_ratio = info.get('shortRatio', 0) or 0
-        
-        # Squeeze score: short_pct * days_to_cover (higher = better squeeze candidate)
-        squeeze_score = short_pct * days_to_cover * 100 if days_to_cover > 0 else 0
-        
-        return {
-            'short_pct': short_pct,
-            'days_to_cover': days_to_cover,
-            'short_ratio': short_ratio,
-            'squeeze_score': squeeze_score,
-        }
-    except Exception:
-        return {'short_pct': 0, 'days_to_cover': 0, 'short_ratio': 0, 'squeeze_score': 0}
-
-
 def bench_perf(ticker):
     try:
         h = yf.Ticker(ticker).history(period="3mo")
@@ -599,21 +564,6 @@ def get_regime():
             regime_score += 15
         elif vix < 28:
             regime_score += 5
-        
-        # V4: Volatility-adjusted allocation multiplier
-        if vix < 12:
-            regime_mult = 1.5  # OVERWEIGHT in extreme calm
-        elif vix < 18:
-            regime_mult = 1.2
-        elif vix < 22:
-            regime_mult = 1.0
-        elif vix < 28:
-            regime_mult = 0.7
-        elif vix < 35:
-            regime_mult = 0.4
-        else:
-            regime_mult = 0.2  # MINIMAL exposure
-        components['regime_mult'] = regime_mult
     except Exception:
         pass
 
@@ -785,11 +735,6 @@ def score_ticker(ticker, close_df, vol_df, open_df, high_df, low_df):
         'TV_MovingAverages': 'NEUTRAL',
         'TV_RSI': None,
         'TV_MACD': None,
-        # V4: Entry Quality & Squeeze Detection
-        'Entry Quality': 'MOMENTUM',
-        'Short Interest': 0,
-        'Days To Cover': 0,
-        'Squeeze Score': 0,
     }
 
 
@@ -870,19 +815,6 @@ def calc_composite(r, bench, regime_level=4):
 
     # V2: Score ceiling + floor
     final_score = max(SCORE_FLOOR, min(SCORE_CEILING, round(abs_mom, 2)))
-    
-    # V4: Pullback Entry Bonus - reward RSI < 50 entries
-    rsi = r.get('TV_RSI', 50)
-    is_bear_mode = 'BEAR' in bench.get('name', '')
-    if rsi and rsi < PULLBACK_RSI_MAX and not is_bear_mode:
-        pullback_pct = (PULLBACK_RSI_MAX - rsi) / PULLBACK_RSI_MAX
-        final_score *= (1.0 + 0.15 * pullback_pct)
-    
-    # V4: Short Squeeze Candidate Bonus
-    squeeze_score = r.get('Squeeze Score', 0)
-    if squeeze_score > SQUEEZE_BONUS:
-        final_score += SQUEEZE_BONUS
-    
     return final_score
 
 
@@ -1002,16 +934,8 @@ def _position_size(r, freq, signal, regime_level=4, is_bear_mode=False):
     # Bear mode
     bear_mult = 0.5 if is_bear_mode else 1.0
     
-    # V4: Pullback entry bonus - bigger size for pullback setups
-    entry_quality = r.get('Entry Quality', 'MOMENTUM')
-    pullback_mult = 1.15 if entry_quality == 'PULLBACK' else 1.0
-    
-    # V4: Short squeeze bonus - size up for squeeze candidates
-    squeeze_score = r.get('Squeeze Score', 0)
-    squeeze_mult = 1.20 if squeeze_score > SQUEEZE_BONUS else 1.0
-    
     # Calculate raw size
-    raw = base * score_mult * freq_mult * atr_mult * regime_mult * bear_mult * pullback_mult * squeeze_mult
+    raw = base * score_mult * freq_mult * atr_mult * regime_mult * bear_mult
     
     # Add TV signal bonus (before clamping)
     final = raw + tv_score
@@ -1195,20 +1119,7 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
             r['ma_buy'] = tv.get('ma_buy', 0)
             r['ma_sell'] = tv.get('ma_sell', 0)
             r['ma_neutral'] = tv.get('ma_neutral', 0)
-            # V4: Update Entry Quality based on pullback detection
-            r['Entry Quality'] = tv.get('entry_quality', 'MOMENTUM')
         sys.stdout.write(f"\r   TV-style technicals computed." + " " * 20 + "\n")
-        sys.stdout.flush()
-        
-        # V4: Enrich with short squeeze data
-        sys.stdout.write(f"   Fetching short interest data for {len(results)} tickers...")
-        sys.stdout.flush()
-        for r in results:
-            sq_data = get_short_squeeze_data(r['Ticker'])
-            r['Short Interest'] = sq_data['short_pct']
-            r['Days To Cover'] = sq_data['days_to_cover']
-            r['Squeeze Score'] = sq_data['squeeze_score']
-        sys.stdout.write(f"\r   Short interest data fetched." + " " * 20 + "\n")
         sys.stdout.flush()
 
     results.sort(key=lambda x: x.get('Dollar Volume', 0), reverse=True)
@@ -1331,15 +1242,14 @@ def generate_html_v3(regime, sections, mode, all_freqs):
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>V4 Master Router: {mode}</title><style>{CSS}</style></head>
+<title>V2 Master Router: {mode}</title><style>{CSS}</style></head>
 <body><div class="c">
-<h1>V4 Master Router ({mode})</h1><p class="date">{now}</p>
+<h1>V2 Master Router ({mode})</h1><p class="date">{now}</p>
 <div class="sig {regime_cls}">{regime['label']}</div>
 <button class="toggle-btn" onclick="document.querySelectorAll('.optional-col').forEach(el=>el.style.display=el.style.display==='none'?'table-cell':'none');this.textContent=this.textContent==='Show Details'?'Hide Details':'Show Details'">Show Details</button>
 <button class="toggle-btn" id="sellToggleBtn" onclick="document.querySelectorAll('table').forEach(tbl=>tbl.classList.toggle('show-sell'));this.textContent=this.textContent==='Show SELL'?'Hide SELL':'Show SELL'">Show SELL</button>
 <div class="metrics">
 <div class="m"><div class="ml">Regime Score</div><div class="mv">{regime['score']}/100</div></div>
-<div class="m"><div class="ml">Allocation</div><div class="mv">{int(alloc * 100)}%</div><div class="ms">{'OVERWEIGHT' if alloc >= 1.2 else ('UNDERWEIGHT' if alloc <= 0.8 else 'NEUTRAL')}</div></div>
 <div class="m"><div class="ml">Breadth Eq-W vs SPY</div><div class="mv">{regime['components'].get('rsp_vs_spy', 'N/A')}%</div></div>
 <div class="m"><div class="ml">VIX</div><div class="mv">{regime['components'].get('vix', 'N/A')}</div></div>
 <div class="m"><div class="ml">SPY vs 200MA</div><div class="mv">${spy_p}</div><div class="ms">{'ABOVE' if spy_above else 'BELOW'} ${spy_ma}</div></div>
@@ -1387,19 +1297,8 @@ def generate_html_v3(regime, sections, mode, all_freqs):
                 cols += f"<td>{_tv_sig_html(osc, 'Oscillators (RSI, Stoch, CCI, MACD, ADX, AO)')}</td>"
             cols += f"<td>{_tv_sig_html(ma, 'Moving Averages (SMA, EMA alignment)')}</td>"
             
-            # V4: Calculate BUY TODAY % for max return - based on score + TV signals
-            score = r.get('Score', 0)
-            tv_rsi = r.get('TV_RSI', 50)
-            tv_score = (10 if osc == 'BUY' else -10 if osc == 'SELL' else 0) + \
-                       (10 if ma == 'BUY' else -10 if ma == 'SELL' else 0) + \
-                       (5 if tv_rsi and tv_rsi < 30 else -5 if tv_rsi and tv_rsi > 70 else 0)
-            base = 10 if s == 'STRONG BUY' else 5 if s == 'BUY' else 2
-            score_mult = 2.0 if score >= 150 else 1.5 if score >= 120 else 1.2 if score >= 100 else 1.0 if score >= 80 else 0.8
-            raw = base * score_mult
-            buy_today_pct = max(2, min(25, int(raw + tv_score)))
-            
-            # Position Size - show BUY TODAY % with green highlight
-            cols += f"<td style='font-weight:bold;color:#00ff7f'>{buy_today_pct}%</td>"
+            # Position Size - no color, just text
+            cols += f"<td>{size}</td>"
             
             rows += f"<tr{row_class}>{cols}</tr>"
         
@@ -1415,7 +1314,7 @@ def generate_html_v3(regime, sections, mode, all_freqs):
         if "★ TOP 3" not in title:
             header += "<th class='tv-header'>TV<br>Oscillators</th>"
         header += "<th class='tv-header'>TV<br>Moving Avg</th>"
-        header += "<th class='tv-header'>BUY<br>TODAY</th>"
+        header += "<th class='tv-header'>Today<br>Buy</th>"
         
         section_attrs = f" class='{section_class}'" if section_class else ""
         return f"<h2>{title}</h2><table{section_attrs}><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
@@ -1803,11 +1702,6 @@ def print_regime(regime):
         print(f"  Breadth (RSP vs SPY): {c['rsp_vs_spy']:+.2f}%")
     if 'vix' in c:
         print(f"  VIX: {c['vix']} ({c.get('vix_level', '')})")
-    # V4: Display volatility-adjusted allocation multiplier
-    if 'regime_mult' in c:
-        mult_pct = int(c['regime_mult'] * 100)
-        alloc_label = "OVERWEIGHT" if mult_pct > 100 else "UNDERWEIGHT" if mult_pct < 100 else "NEUTRAL"
-        print(f"  Allocation: {alloc_label} ({mult_pct}%)")
 
 def print_table(title, results, bench_ticker, bench, all_freqs, regime_level=4, is_bear_mode=False):
     print(f"\n{SEP}")
@@ -1883,23 +1777,13 @@ def print_portfolio_v3(picks, is_bear, all_freqs):
         # V2: Partial exit plan
         print(f"      Exit Plan: Take 1/3 at T1, 1/3 at T2, hold 1/3 with trailing stop")
         
-        # V4: Trailing Stop indicator - shows breakeven after T1
-        breakeven_stop = round(price * 1.002, 2)
-        print(f"      Trailing Stop: After T1 hit → move stop to ${breakeven_stop} (breakeven)")
-        
         if p3 > 5.0:
             print(f"      >>> PYRAMID OPPORTUNITY: +{p3:.1f}% in 3D. Consider adding 10% size.")
         if p3 < -2.0:
             print(f"      !! MOMENTUM EXIT TRIGGERED: 3D = {p3:.1f}% - Consider scaling out")
-        
-        # V4: Short squeeze and pullback indicators
-        if r.get('Squeeze Score', 0) > SQUEEZE_BONUS:
-            print(f"      >>> SHORT SQUEEZE CANDIDATE: {r['Short Interest']*100:.1f}% short, {r['Days To Cover']:.1f} days to cover")
-        if r.get('Entry Quality') == 'PULLBACK':
-            print(f"      >>> PULLBACK ENTRY: RSI={r.get('TV_RSI', 'N/A')} - ideal risk/reward setup")
 
 def main():
-    print("Initializing V4 Master Router...")
+    print("Initializing V2 Master Router...")
     
     # Load history for Freq
     sh, eh, bh = load_history()
