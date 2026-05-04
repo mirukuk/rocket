@@ -1,6 +1,6 @@
 # Market Screener
 
-One file (`run_all.py`) → generates `index.html` dashboard.
+One file (`run.py`) → generates `index.html` dashboard.
 
 ## Strategy
 
@@ -65,12 +65,11 @@ Use ETFs to identify which **sector** is leading, then pick individual stocks fr
 ## Usage
 
 ```bash
-python run_all.py                # full run, saves history, generates index.html
-python run_all.py --no-save-history  # skip saving daily snapshot
+python run.py                    # run the screener, generates index.html
 ```
 
 ## Files
 
-- `run_all.py` — all logic in one file (market analysis, screener, HTML generation)
+- `run.py` — all logic in one file (market analysis, screener, HTML generation)
 - `index.html` — output dashboard (auto-generated)
-- `history/*.json` — daily snapshots (last 10 trading days)
+- `history/*.json` — daily snapshots
