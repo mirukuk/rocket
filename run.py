@@ -1293,7 +1293,28 @@ td { font-size:.85rem; } tr:hover { background:#161b22; }
 .sell-section { background:linear-gradient(135deg, #2d1a1a 0%, #251515 100%); border:1px solid #f85149; border-radius:6px; margin-bottom:1rem; }
 .sell-section h2 { color:#f85149; border-bottom:1px solid #f8514940; }
 .avoid-section { background:linear-gradient(135deg, #2d1a1a 0%, #200d0d 100%); border:1px solid #6e4066; border-radius:6px; margin-bottom:1rem; }
+.clickable-row { cursor:pointer; transition:background 0.2s; }
+.clickable-row:hover { background:rgba(0,255,127,0.1); }
+.clickable-row.expanded td:first-child::before { content:"▼ "; }
+.clickable-row td:first-child::before { content:"▶ "; }
+.details-row td { background:#0d1117; padding:12px; }
+.detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; }
+.detail-item { background:#1a1f2e; border-radius:6px; padding:8px; text-align:center; }
+.detail-label { font-size:0.7rem; color:#8b949e; text-transform:uppercase; margin-bottom:4px; }
+.detail-value { font-size:0.9rem; font-weight:bold; color:#c9d1d9; }
+.detail-value.warning { color:#d29922; }
+.detail-value.sell { color:#f85149; }
 .avoid-section h2 { color:#f87171; border-bottom:1px solid #6e406640; }
+.clickable-row { cursor:pointer; transition:background 0.2s; }
+.clickable-row:hover td { background:rgba(0,255,127,0.1); }
+.clickable-row:active td { background:rgba(0,255,127,0.15); }
+.details-row td { background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%); padding:12px 16px; font-size:0.85rem; }
+.detail-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; }
+.detail-item { background:rgba(255,255,255,0.05); padding:8px 10px; border-radius:4px; }
+.detail-label { color:#888; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.5px; }
+.detail-value { color:#00ff7f; font-weight:bold; margin-top:2px; }
+.detail-value.sell { color:#f85149; }
+.detail-value.warning { color:#f0883e; }
 """
 
 def _sig_html(sig):
@@ -1327,11 +1348,41 @@ def generate_html_v3(regime, sections, mode, all_freqs):
     spy_p = c.get('spy_price', 'N/A')
     spy_ma = c.get('spy_ma200', 'N/A')
     spy_above = c.get('spy_above_200', False)
+    
+    # JavaScript for expandable rows - stored outside f-string to avoid parsing issues
+    toggle_js = """
+<script>
+function toggleDetails(row){
+  var next=row.nextElementSibling;
+  if(next && next.classList.contains('details-row')){
+    var cur=next.style.display;
+    next.style.display=(cur==='none' || cur==='')?'table-row':'none';
+    row.classList.toggle('expanded');
+  }
+}
+document.addEventListener('DOMContentLoaded',function(){
+  var tables=document.querySelectorAll('table');
+  tables.forEach(function(tbl){
+    var ths=tbl.querySelectorAll('th');
+    ths.forEach(function(th){
+      if(th.textContent.indexOf('Today')!==-1){
+        th.style.cursor='pointer';
+        th.addEventListener('click',function(){
+          var idx=Array.prototype.slice.call(ths).indexOf(th);
+          var cells=tbl.querySelectorAll('td:nth-child('+(idx+1)+')');
+          cells.forEach(function(c){c.style.display=(c.style.display==='none')?'table-cell':'none';});
+        });
+      }
+    });
+  });
+});
+</script>"""
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>V4 Master Router: {mode}</title><style>{CSS}</style></head>
+<title>V4 Master Router: {mode}</title><style>{CSS}</style>{toggle_js}
+</head>
 <body><div class="c">
 <h1>V4 Master Router ({mode})</h1><p class="date">{now}</p>
 <div class="sig {regime_cls}">{regime['label']}</div>
@@ -1401,7 +1452,43 @@ def generate_html_v3(regime, sections, mode, all_freqs):
             # Position Size - show BUY TODAY % with green highlight
             cols += f"<td style='font-weight:bold;color:#00ff7f'>{buy_today_pct}%</td>"
             
-            rows += f"<tr{row_class}>{cols}</tr>"
+            # Build hidden details for expanded view
+            short_pct = r.get('Short Interest', 0) or 0
+            si_cls = 'sell' if short_pct >= 20 else 'warning' if short_pct >= 10 else ''
+            days_3 = r.get('3D %', 0) or 0
+            days_5 = r.get('5D %', 0) or 0
+            days_15 = r.get('15D %', 0) or 0
+            weeks_13 = r.get('13W %', 0) or 0
+            vol_surge = r.get('Vol Surge') or 1.0
+            accel = '✓' if r.get('Acceleration', False) else '✗'
+            breakout = '✓' if r.get('Breakout', False) else '✗'
+            overext = r.get('Overextended', False)
+            sq_score = r.get('Squeeze Score') or 0
+            days_cover = r.get('Days to Cover') or 0
+            tv_rsi_val = tv_rsi if tv_rsi else 0
+            
+            details = f"""
+            <tr class="details-row" style="display:none">
+                <td colspan="11">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value {si_cls}">{short_pct:.1f}%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">{days_cover:.1f}</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value {'warning' if sq_score > 5 else ''}">{sq_score:.1f}</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value {'warning' if days_3 >= 10 else ''}">{days_3:.1f}%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">{days_5:.1f}%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">{days_15:.1f}%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">{weeks_13:.1f}%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value {'warning' if vol_surge >= 2 else ''}">{vol_surge:.1f}x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value {'sell' if accel == '✗' else ''}">{accel}</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value {'warning' if breakout == '✓' else 'sell'}">{breakout}</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value {'sell' if overext else ''}">{'✗' if overext else '✓'}</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value {'warning' if tv_rsi_val and tv_rsi_val < 30 else ('sell' if tv_rsi_val and tv_rsi_val > 70 else '')}">{tv_rsi_val:.0f}</div></div>
+                    </div>
+                </td>
+            </tr>
+            """
+            
+            rows += f"<tr{row_class} class='clickable-row'>{cols}</tr>{details}"
         
         header = "<th>#</th><th>Ticker</th>"
         if 'Today' not in exclude_cols:
