@@ -2,10 +2,10 @@ name: Daily Market Analysis
 
 on:
   schedule:
-    # Mon-Fri 11pm HKT (end of US market day)
-    - cron: '0 15 * * 1-5'
-    # Tue-Sat 6am HKT (morning recap, saves history)
-    - cron: '0 22 * * 1-5'
+    # 10pm, 11pm, 12am, 1am, 2am HKT (Mon-Fri) = 14-18 UTC previous day
+    - cron: '0 14-18 * * 1-5'
+    # 10am HKT next-day recap (Tue-Sat) = 02 UTC
+    - cron: '0 2 * * 2-6'
   workflow_dispatch:
 
 jobs:
