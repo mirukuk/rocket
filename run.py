@@ -1403,7 +1403,7 @@ document.addEventListener('DOMContentLoaded',function(){
         
         # Determine section styling class
         section_class = ""
-        if "★ TOP 3" in title:
+        if "★ TOP 5" in title:
             section_class = "top-featured"
         elif "SELL Signal" in title:
             section_class = "sell-section"
@@ -1434,7 +1434,7 @@ document.addEventListener('DOMContentLoaded',function(){
             
             # TradingView Technicals - hide Oscillators in TOP 3 section
             osc, ma = _format_tv_signal(r)
-            if "★ TOP 3" not in title:
+            if "★ TOP 5" not in title:
                 cols += f"<td>{_tv_sig_html(osc, 'Oscillators (RSI, Stoch, CCI, MACD, ADX, AO)')}</td>"
             cols += f"<td>{_tv_sig_html(ma, 'Moving Averages (SMA, EMA alignment)')}</td>"
             
@@ -1499,7 +1499,7 @@ document.addEventListener('DOMContentLoaded',function(){
         header += "<th class='optional-col'>Freq</th>"
         header += "<th class='tv-header'>Signal</th>"
         # Only show TV Oscillators column if NOT in TOP 3 section
-        if "★ TOP 3" not in title:
+        if "★ TOP 5" not in title:
             header += "<th class='tv-header'>TV<br>Oscillators</th>"
         header += "<th class='tv-header'>TV<br>Moving Avg</th>"
         header += "<th class='tv-header'>BUY<br>TODAY</th>"
@@ -2110,7 +2110,7 @@ def main():
     all_sell.sort(key=lambda x: x.get('Score', 0), reverse=True)
     all_low_score.sort(key=lambda x: x.get('Score', 0), reverse=True)
     
-    # Top 3 Featured ETFs - prioritize by 13W performance and TV signals
+    # Top 5 Featured ETFs - prioritize by 13W performance and TV signals
     # Sort by 13W performance when available, making best monthly performer #1
     # Require minimum $100M volume for featured (exclude low liquidity ETFs)
     MIN_VOL_FEATURED = 100_000_000
@@ -2129,9 +2129,8 @@ def main():
         return (p13w * 5 + score * 0.5 + tv_buy * 50)
     
     # Get all STRONG BUY + BUY ETFs, add KORU if not present (has strong TV BUY signals)
-    top_buy_pool = all_strong_buy[:3] + all_buy[:5]
+    top_buy_pool = all_strong_buy[:5] + all_buy[:5]
     pool_tickers = {x['Ticker'] for x in top_buy_pool}
-    
     # Add KORU directly since it has strong TV BUY signals (TV Osc+TV MA both BUY)
     if 'KORU' not in pool_tickers:
         for etf in all_etf_combined:
@@ -2141,15 +2140,13 @@ def main():
     
     top_buy_pool = list({x['Ticker']: x for x in top_buy_pool}.values())  # dedup
     top_buy_pool.sort(key=featured_soft, reverse=True)
-    top_featured = top_buy_pool[:3]
-    
+    top_featured = top_buy_pool[:5]
     # sections: (results, title, exclude_cols)
     sections = []
     
-    # Top 3 Featured ETFs - highlighted section
+    # Top 5 Featured ETFs - highlighted section
     if top_featured:
-        sections.append((top_featured, "★ TOP 3 FEATURED ETFS ★", ['Today', 'ATR%']))
-    
+        sections.append((top_featured, "★ TOP 5 FEATURED ETFS ★", ['Today', 'ATR%']))
     # ALL ETFs section - shows everything
     all_etfs_sorted = sorted(all_etf_combined, key=lambda x: x.get('Score', 0), reverse=True)
     if all_etfs_sorted:
