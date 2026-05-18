@@ -1129,7 +1129,7 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
         if not d.get('Above MA20') and t != ensure_ticker:
             pass # V3 allows testing even if under MA20 if momentum is wild (ATR checks cover stops)
         if d['3D %'] <= 0 and d['5D %'] <= 0 and t != ensure_ticker:
-            if 'WATCHLIST' not in name:
+            if 'WATCHLIST' not in name and 'BULL' not in name:
                 continue
 
         # V2: Hard exclude stop-triggered (skip for watchlist)
@@ -1152,6 +1152,9 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
         else:
             beats_bench = (d['5D %'] > bench['perf_5d']
                            or d['15D %'] > bench['perf_15d'])
+
+        if 'BULL' in name:
+            beats_bench = True
 
         if "BEAR" in name:
             beats_bench = True # If Bear mode, allow inverse ETFs to pass easily to spot best
@@ -1424,6 +1427,8 @@ document.addEventListener('DOMContentLoaded',function(){
             cols = f"<td>{i}</td><td>{tk}</td>"
             if 'Today' not in exclude_cols:
                 cols += f"<td>{fmt_pct(r.get('Today %'))}</td>"
+                if '15D' not in exclude_cols:
+                    cols += f"<td>{fmt_pct(r.get('15D %'))}</td>"
             cols += f"<td>{fmt_dollar_volume(r.get('Dollar Volume'))}</td><td class='optional-col'>{r.get('Score', 0):.0f}</td>"
             if 'ATR%' not in exclude_cols:
                 cols += f"<td class='optional-col'>{r.get('ATR %', 0):.1f}%</td>"
@@ -1470,7 +1475,11 @@ document.addEventListener('DOMContentLoaded',function(){
             details = f"""
             <tr class="details-row" style="display:none">
                 <td colspan="11">
+                                    <td colspan="12">
+                    <td colspan="12">
                     <div class="detail-grid">
+                    <td colspan="12">
+                        <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value {si_cls}">{short_pct:.1f}%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">{days_cover:.1f}</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value {'warning' if sq_score > 5 else ''}">{sq_score:.1f}</div></div>
@@ -1493,6 +1502,8 @@ document.addEventListener('DOMContentLoaded',function(){
         header = "<th>#</th><th>Ticker</th>"
         if 'Today' not in exclude_cols:
             header += "<th>Today</th>"
+            if '15D' not in exclude_cols:
+                header += "<th>15D</th>"
         header += "<th>$Vol</th><th class='optional-col'>Score</th>"
         if 'ATR%' not in exclude_cols:
             header += "<th class='optional-col'>ATR%</th>"
@@ -2008,7 +2019,7 @@ def main():
     stocks, stock_bench = run_screener(
         "STOCK SCREENER",
         [STOCK_URL, STOCK_URL2, STOCK_URL3],
-        bench_ticker="SOXL",
+        bench_ticker="SOXL", ensure_ticker='SOXL',
         min_dv=30e6, dl_limit=200,
     )
     etfs, etf_bench = run_screener(
@@ -2022,7 +2033,7 @@ def main():
     bull_etfs_res, bull_etf_bench = run_screener(
         "TOP BULL LEVERAGED ETFs (vs QQQ)",
         finviz_urls=[],
-        bench_ticker="QQQ",
+        bench_ticker="QQQ", ensure_ticker='TQQQ',
         min_dv=5e6, dl_limit=80,
         ticker_list=BULL_ETFS
     )
@@ -2038,6 +2049,11 @@ def main():
         force_show=True  # Bypass all filters
     )
     
+    # Sort each table by 15D performance
+    stocks.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
+    etfs.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
+    bull_etfs_res.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
+    watchlist_res.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
     print_table("STOCKS", stocks, "SOXL", stock_bench, all_freqs, regime['level'], is_bear_mode)
     print_table("BULL ETFs", etfs, "QQQ", etf_bench, all_freqs, regime['level'], is_bear_mode)
     print_table("TOP BULL LONGS", bull_etfs_res, "QQQ", bull_etf_bench, all_freqs, regime['level'], is_bear_mode)
@@ -2053,14 +2069,15 @@ def main():
             min_dv=5e6, dl_limit=80,
             ticker_list=BEAR_ETFS
         )
+        bear_etfs.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
         print_table("BEAR ETFs", bear_etfs, "SPY", etf_bench_bear, all_freqs, regime['level'], is_bear_mode)
         print_portfolio_v3(bear_etfs, True, all_freqs)
     else:
         all_picks = sorted(stocks + etfs, key=lambda x: x.get('Score',0), reverse=True)
         valid_picks = [p for p in all_picks if p.get('Score',0) > 0 and not p.get('_reference')]
         print_portfolio_v3(valid_picks, False, all_freqs)
-        
-    # Save the new history today
+
+        # Save the new history today
     save_history(stocks, etfs, bear_etfs)
     
     # Reload frequencies to include today's run
@@ -2077,6 +2094,12 @@ def main():
     
     # Combine all ETFs for signal grouping
     all_etf_combined = list(etfs) + list(bull_etfs_res)
+    watch_etf_tickers = {w['Ticker'] for w in watchlist_res}
+    seen_tickers = {e['Ticker'] for e in etfs} | {b['Ticker'] for b in bull_etfs_res}
+    for w in watchlist_res:
+        if w['Ticker'] not in seen_tickers:
+            all_etf_combined.append(w)
+            seen_tickers.add(w['Ticker'])
     
     # Categorize all tickers by signal
     all_strong_buy = []
@@ -2110,45 +2133,46 @@ def main():
     all_sell.sort(key=lambda x: x.get('Score', 0), reverse=True)
     all_low_score.sort(key=lambda x: x.get('Score', 0), reverse=True)
     
-    # Top 5 Featured ETFs - prioritize by 13W performance and TV signals
-    # Sort by 13W performance when available, making best monthly performer #1
-    # Require minimum $100M volume for featured (exclude low liquidity ETFs)
-    MIN_VOL_FEATURED = 100_000_000
     
+    # Re-sort all categories by 15D performance
+    all_strong_buy.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
+    all_buy.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
+    all_hold.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
+    all_sell.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
+    all_low_score.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
+
+    
+    # Top 3 Featured ETFs - prioritize by 20-day (15D) performance and TV signals
+    # Sort by 13W performance when available, making best monthly performer #1
+    # Sort by 20-day (15D) performance when available, making best performer #1
+    # Require minimum $100M volume for featured (exclude low liquidity ETFs)
+    MIN_VOL_FEATURED = 5_000_000
     def featured_soft(soft):
         score = soft.get('Score', 0)
-        p13w = soft.get('13W %', 0) if soft.get('13W %') else 0
+        p15d = soft.get('15D %', 0) if soft.get('15D %') else 0  # ~20 trading days
         tv_buy = 1 if soft.get('TV_Oscillators') == 'BUY' else 0
         tv_buy += 1 if soft.get('TV_MovingAverages') == 'BUY' else 0
         # Use Dollar Volume (not $Vol) - penalize low volume heavily
         vol = soft.get('Dollar Volume', 0)
         if vol < MIN_VOL_FEATURED:
             # Too low - push to bottom
-            return -10000 + p13w
-        # Good volume - use full ranking
-        return (p13w * 5 + score * 0.5 + tv_buy * 50)
+            return -10000 + p15d
+        # Good volume - use full ranking, prioritizing 20-day performance
+        return (p15d * 5 + score * 0.5 + tv_buy * 50)
     
     # Get all STRONG BUY + BUY ETFs, add KORU if not present (has strong TV BUY signals)
-    top_buy_pool = all_strong_buy[:5] + all_buy[:5]
-    pool_tickers = {x['Ticker'] for x in top_buy_pool}
-    # Add KORU directly since it has strong TV BUY signals (TV Osc+TV MA both BUY)
-    if 'KORU' not in pool_tickers:
-        for etf in all_etf_combined:
-            if etf['Ticker'] == 'KORU':
-                top_buy_pool.append(etf)
-                break
-    
-    top_buy_pool = list({x['Ticker']: x for x in top_buy_pool}.values())  # dedup
-    top_buy_pool.sort(key=featured_soft, reverse=True)
-    top_featured = top_buy_pool[:5]
+    # Use ALL ETFs as the pool — rank by 20-day performance, TV signals, and volume
+    all_etfs_ranked = sorted(all_etf_combined, key=featured_soft, reverse=True)
+    top_featured = all_etfs_ranked[:3]
     # sections: (results, title, exclude_cols)
     sections = []
     
-    # Top 5 Featured ETFs - highlighted section
+    # Top 3 Featured ETFs - highlighted section
     if top_featured:
-        sections.append((top_featured, "★ TOP 5 FEATURED ETFS ★", ['Today', 'ATR%']))
+        sections.append((top_featured, "★ TOP 3 FEATURED ETFS ★", ['Today', 'ATR%']))
+    
     # ALL ETFs section - shows everything
-    all_etfs_sorted = sorted(all_etf_combined, key=lambda x: x.get('Score', 0), reverse=True)
+    all_etfs_sorted = sorted(all_etf_combined, key=lambda x: x.get('15D %', 0) or 0, reverse=True)
     if all_etfs_sorted:
         sections.append((all_etfs_sorted, "ALL ETFs", []))
     
