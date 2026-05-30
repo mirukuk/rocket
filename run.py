@@ -1429,9 +1429,7 @@ document.addEventListener('DOMContentLoaded',function(){
             ncols += 1
         ncols += 1  # 'Freq'
         ncols += 1  # 'Signal'
-        if "★ TOP 5" not in title:
-            ncols += 1  # 'TV Oscillators'
-        ncols += 2  # 'TV Moving Avg', 'BUY TODAY'
+        ncols += 1  # 'BUY TODAY'
 
         rows = ""
         for i, r in enumerate(results[:15], 1):
@@ -1453,12 +1451,9 @@ document.addEventListener('DOMContentLoaded',function(){
             # Own Technical Analysis (script)
             cols += f"<td>{_sig_html(s)}</td>"
             
-            # TradingView Technicals - hide Oscillators in TOP 3 section
+            # TradingView signals still used for BUY TODAY calculation but not shown as columns
             osc, ma = _format_tv_signal(r)
-            if "★ TOP 5" not in title:
-                cols += f"<td>{_tv_sig_html(osc, 'Oscillators (RSI, Stoch, CCI, MACD, ADX, AO)')}</td>"
-            cols += f"<td>{_tv_sig_html(ma, 'Moving Averages (SMA, EMA alignment)')}</td>"
-            
+
             # V4: Calculate BUY TODAY % for max return - based on score + TV signals
             score = r.get('Score', 0)
             tv_rsi = r.get('TV_RSI', 50)
@@ -1521,10 +1516,6 @@ document.addEventListener('DOMContentLoaded',function(){
             header += "<th class='optional-col'>ATR%</th>"
         header += "<th class='optional-col'>Freq</th>"
         header += "<th class='tv-header'>Signal</th>"
-        # Only show TV Oscillators column if NOT in TOP 3 section
-        if "★ TOP 5" not in title:
-            header += "<th class='tv-header'>TV<br>Oscillators</th>"
-        header += "<th class='tv-header'>TV<br>Moving Avg</th>"
         header += "<th class='tv-header'>BUY<br>TODAY</th>"
         
         section_attrs = f" class='{section_class}'" if section_class else ""
