@@ -172,12 +172,9 @@ def bulk_download(tickers, period="1y"):
             sys.stderr = _stderr
         if data.empty:
             return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-        if len(tickers) == 1:
-            return (data[['Close']].rename(columns={'Close': tickers[0]}),
-                    data[['Volume']].rename(columns={'Volume': tickers[0]}),
-                    data[['Open']].rename(columns={'Open': tickers[0]}),
-                    data[['High']].rename(columns={'High': tickers[0]}),
-                    data[['Low']].rename(columns={'Low': tickers[0]}))
+        # yfinance 1.1+ always returns a MultiIndex DataFrame regardless of
+        # ticker count, so data.get('Close') is the correct path for both
+        # single and multi-ticker downloads.
         return (data.get('Close', pd.DataFrame()),
                 data.get('Volume', pd.DataFrame()),
                 data.get('Open', pd.DataFrame()),
