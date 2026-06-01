@@ -23,10 +23,15 @@ import requests
 import pandas as pd
 import logging
 import numpy as np
+import warnings
 
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 logging.getLogger("peewee").setLevel(logging.CRITICAL)
+
+# Silence pandas FutureWarnings (e.g. float() on single-element Series) so the
+# console output stays readable and stable across pandas versions.
+warnings.simplefilter("ignore", category=FutureWarning)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 HISTORY_DIR = os.path.join(ROOT, 'history')
@@ -57,7 +62,7 @@ SQUEEZE_BONUS = 30  # Score bonus for squeeze candidates
 SECTOR_ETFS = ['XLK', 'XLE', 'XLV', 'XLY', 'XLF', 'XLRE']
 
 # Always-visible watchlist tickers
-WATCHLIST_TICKERS = ['SOXL', 'DRAM', 'KORU']
+WATCHLIST_TICKERS = ['SOXL', 'DRAM', 'KORU', 'BULZ', 'TECL']
 
 
 def get_sector_rotation():
@@ -142,8 +147,11 @@ def fetch_finviz(url, limit=200):
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         r.raise_for_status()
         seen = set()
-        # Updated pattern for new Finviz HTML structure
-        return [t for t in re.findall(r"quote\?t=([A-Z]+)", r.text)
+        # Finviz ticker links now use the form `stock?t=TICKER` (older pages used
+        # `quote?t=TICKER`). Match both so the screener keeps working across
+        # Finviz HTML changes. Allow '.'/'-' for tickers like BRK.B / BF-B.
+        tickers = re.findall(r"(?:stock|quote)\?t=([A-Z][A-Z.\-]*)", r.text)
+        return [t for t in tickers
                 if not (t in seen or seen.add(t))][:limit]
     except Exception as e:
         print(f"   Finviz error: {e}")
@@ -164,12 +172,9 @@ def bulk_download(tickers, period="1y"):
             sys.stderr = _stderr
         if data.empty:
             return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-        if len(tickers) == 1:
-            return (data[['Close']].rename(columns={'Close': tickers[0]}),
-                    data[['Volume']].rename(columns={'Volume': tickers[0]}),
-                    data[['Open']].rename(columns={'Open': tickers[0]}),
-                    data[['High']].rename(columns={'High': tickers[0]}),
-                    data[['Low']].rename(columns={'Low': tickers[0]}))
+        # yfinance 1.1+ always returns a MultiIndex DataFrame regardless of
+        # ticker count, so data.get('Close') is the correct path for both
+        # single and multi-ticker downloads.
         return (data.get('Close', pd.DataFrame()),
                 data.get('Volume', pd.DataFrame()),
                 data.get('Open', pd.DataFrame()),
@@ -1288,8 +1293,6 @@ td { font-size:.85rem; } tr:hover { background:#161b22; }
 .optional-col { display:none; }
 .toggle-btn { background:#30363d; color:#c9d1d9; border:1px solid #484f58; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:0.75rem; margin-bottom:8px; }
 .toggle-btn:hover { background:#484f58; }
-.sell-row { display:none; }
-.show-sell .sell-row { display:table-row; }
 .top-featured { margin-bottom:1rem; }
 .top-featured h2 { color:#00ff7f; border-bottom:1px solid #00ff7f40; }
 .top-featured tr:hover td { background:rgba(0,255,127,0.05); }
@@ -1390,7 +1393,6 @@ document.addEventListener('DOMContentLoaded',function(){
 <h1>V4 Master Router ({mode})</h1><p class="date">{now}</p>
 <div class="sig {regime_cls}">{regime['label']}</div>
 <button class="toggle-btn" onclick="document.querySelectorAll('.optional-col').forEach(el=>el.style.display=el.style.display==='none'?'table-cell':'none');this.textContent=this.textContent==='Show Details'?'Hide Details':'Show Details'">Show Details</button>
-<button class="toggle-btn" id="sellToggleBtn" onclick="document.querySelectorAll('table').forEach(tbl=>tbl.classList.toggle('show-sell'));this.textContent=this.textContent==='Show SELL'?'Hide SELL':'Show SELL'">Show SELL</button>
 <div class="metrics">
 <div class="m"><div class="ml">Regime Score</div><div class="mv">{regime['score']}/100</div></div>
 <div class="m"><div class="ml">Allocation</div><div class="mv">{int(alloc * 100)}%</div><div class="ms">{'OVERWEIGHT' if alloc >= 1.2 else ('UNDERWEIGHT' if alloc <= 0.8 else 'NEUTRAL')}</div></div>
@@ -1414,6 +1416,21 @@ document.addEventListener('DOMContentLoaded',function(){
             section_class = "avoid-section"
         
         is_sell_section = 'SELL' in title
+
+        # Number of visible columns in this table — used for the details-row
+        # colspan so the expanded panel spans the full width.
+        ncols = 2  # '#', 'Ticker'
+        if 'Today' not in exclude_cols:
+            ncols += 1
+            if '15D' not in exclude_cols:
+                ncols += 1
+        ncols += 2  # '$Vol', 'Score'
+        if 'ATR%' not in exclude_cols:
+            ncols += 1
+        ncols += 1  # 'Freq'
+        ncols += 1  # 'Signal'
+        ncols += 1  # 'BUY TODAY'
+
         rows = ""
         for i, r in enumerate(results[:15], 1):
             tk = r['Ticker']
@@ -1421,9 +1438,6 @@ document.addEventListener('DOMContentLoaded',function(){
             s = _signal(r, freq, i, len(results), regime.get('level', 4))
             best_score = results[0].get('Score', 0) if results else 0
             size = _get_adjusted_size(r, i, best_score, freq, s, regime.get('level', 4), 'BEAR' in mode)
-            
-            row_class = " class='sell-row'" if is_sell_section else ""
-            
             cols = f"<td>{i}</td><td>{tk}</td>"
             if 'Today' not in exclude_cols:
                 cols += f"<td>{fmt_pct(r.get('Today %'))}</td>"
@@ -1437,12 +1451,9 @@ document.addEventListener('DOMContentLoaded',function(){
             # Own Technical Analysis (script)
             cols += f"<td>{_sig_html(s)}</td>"
             
-            # TradingView Technicals - hide Oscillators in TOP 3 section
+            # TradingView signals still used for BUY TODAY calculation but not shown as columns
             osc, ma = _format_tv_signal(r)
-            if "★ TOP 5" not in title:
-                cols += f"<td>{_tv_sig_html(osc, 'Oscillators (RSI, Stoch, CCI, MACD, ADX, AO)')}</td>"
-            cols += f"<td>{_tv_sig_html(ma, 'Moving Averages (SMA, EMA alignment)')}</td>"
-            
+
             # V4: Calculate BUY TODAY % for max return - based on score + TV signals
             score = r.get('Score', 0)
             tv_rsi = r.get('TV_RSI', 50)
@@ -1474,12 +1485,8 @@ document.addEventListener('DOMContentLoaded',function(){
             
             details = f"""
             <tr class="details-row" style="display:none">
-                <td colspan="11">
-                                    <td colspan="12">
-                    <td colspan="12">
+                <td colspan="{ncols}">
                     <div class="detail-grid">
-                    <td colspan="12">
-                        <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value {si_cls}">{short_pct:.1f}%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">{days_cover:.1f}</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value {'warning' if sq_score > 5 else ''}">{sq_score:.1f}</div></div>
@@ -1497,7 +1504,7 @@ document.addEventListener('DOMContentLoaded',function(){
             </tr>
             """
             
-            rows += f"<tr{row_class} class='clickable-row'>{cols}</tr>{details}"
+            rows += f"<tr class='clickable-row' onclick='toggleDetails(this)'>{cols}</tr>{details}"
         
         header = "<th>#</th><th>Ticker</th>"
         if 'Today' not in exclude_cols:
@@ -1509,10 +1516,6 @@ document.addEventListener('DOMContentLoaded',function(){
             header += "<th class='optional-col'>ATR%</th>"
         header += "<th class='optional-col'>Freq</th>"
         header += "<th class='tv-header'>Signal</th>"
-        # Only show TV Oscillators column if NOT in TOP 3 section
-        if "★ TOP 5" not in title:
-            header += "<th class='tv-header'>TV<br>Oscillators</th>"
-        header += "<th class='tv-header'>TV<br>Moving Avg</th>"
         header += "<th class='tv-header'>BUY<br>TODAY</th>"
         
         section_attrs = f" class='{section_class}'" if section_class else ""
@@ -1541,348 +1544,6 @@ document.addEventListener('DOMContentLoaded',function(){
     
     html += "</div></body></html>"
     
-    # Add copy button and JavaScript
-    copy_js = """
-<script>
-function getClipboardItem() {
-    const modeLabel = document.querySelector('.sig').textContent.trim();
-    const etfSection = document.querySelector('h2');
-    const table = document.querySelector('table');
-    if (!table) return;
-    
-    // Get table data
-    let text = modeLabel + '\\n\\n';
-    text += 'Top ETFs\\n';
-    text += '--- --- --- --- ---\\n';
-    
-    const rows = table.querySelectorAll('tbody tr');
-    rows.forEach((row, i) => {
-        const cells = row.querySelectorAll('td');
-        if (cells.length >= 2) {
-            const ticker = cells[1].textContent.trim();
-            const sig = cells[cells.length - 1].textContent.trim();
-            if (ticker && sig && sig !== 'HOLD') {
-                text += (i+1) + '. ' + ticker + ' ' + sig + '\\n';
-            }
-        }
-    });
-    
-    return text;
-}
-
-async function copyImage() {
-    const btn = document.querySelector('.copy-btn');
-    try {
-        const text = getClipboardItem();
-        if (text) {
-            await navigator.clipboard.writeText(text);
-            btn.textContent = '✓';
-            setTimeout(() => btn.textContent = '📋', 1500);
-        }
-    } catch(err) {
-        btn.textContent = '!';
-        setTimeout(() => btn.textContent = '📋', 1500);
-    }
-}
-
-function generateShareImage() {
-    const btn = document.querySelectorAll('.copy-btn')[1];
-    btn.textContent = '⏳';
-    
-    const regimeLabel = document.querySelector('.sig').textContent.trim();
-    const regimeScore = document.querySelector('.m .mv').textContent.trim();
-    const vix = document.querySelectorAll('.m')[2].querySelector('.mv').textContent.trim();
-    
-    const tables = document.querySelectorAll('table');
-    let etfData = [];
-    if (tables.length > 0) {
-        const rows = tables[0].querySelectorAll('tbody tr');
-        rows.forEach((row) => {
-            const cells = row.querySelectorAll('td');
-            if (cells.length >= 2) {
-                const sig = cells[cells.length - 1].textContent.trim();
-                if (sig && sig !== 'HOLD') {
-                    etfData.push({ ticker: cells[1].textContent.trim(), signal: sig });
-                }
-            }
-        });
-    }
-    
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const width = 1200, height = 800;
-    canvas.width = width;
-    canvas.height = height;
-    
-    // === STUNNING GRADIENT BACKGROUND ===
-    const bg = ctx.createLinearGradient(0, 0, width, height);
-    bg.addColorStop(0, '#0a0a0f');
-    bg.addColorStop(0.3, '#12121a');
-    bg.addColorStop(0.7, '#0d1117');
-    bg.addColorStop(1, '#0a0a12');
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, width, height);
-    
-    // === DECORATIVE GRID LINES ===
-    ctx.strokeStyle = 'rgba(88, 166, 255, 0.03)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < width; i += 40) {
-        ctx.beginPath();
-        ctx.moveTo(i, 0);
-        ctx.lineTo(i, height);
-        ctx.stroke();
-    }
-    for (let i = 0; i < height; i += 40) {
-        ctx.beginPath();
-        ctx.moveTo(0, i);
-        ctx.lineTo(width, i);
-        ctx.stroke();
-    }
-    
-    // === GLOW EFFECT FOR REGIME ===
-    const regimeColor = regimeLabel.includes('RISK OFF') ? '#f85149' : 
-                       regimeLabel.includes('FULL') ? '#00ff7f' : '#ffd700';
-    
-    ctx.shadowColor = regimeColor;
-    ctx.shadowBlur = 40;
-    ctx.fillStyle = regimeColor;
-    ctx.font = 'bold 80px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(regimeLabel, width/2, 140);
-    ctx.shadowBlur = 0;
-    
-    // === HEADER BRANDING ===
-    ctx.fillStyle = '#58a6ff';
-    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.fillText('V2 MASTER ROUTER', width/2, 55);
-    
-    // === METRICS BAR ===
-    ctx.fillStyle = 'rgba(88, 166, 255, 0.1)';
-    roundRect(ctx, width/2 - 280, 175, 560, 55, 27);
-    ctx.fill();
-    
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.fillText('SCORE: ' + regimeScore + '    |    VIX: ' + vix, width/2, 212);
-    
-    // === TOP ETFs SECTION ===
-    ctx.fillStyle = '#f0c040';
-    ctx.font = 'bold 32px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('TOP ETFS', 60, 295);
-    
-    // === DECORATIVE LINE ===
-    const lineGrad = ctx.createLinearGradient(60, 0, width - 60, 0);
-    lineGrad.addColorStop(0, '#f0c040');
-    lineGrad.addColorStop(0.5, '#58a6ff');
-    lineGrad.addColorStop(1, '#f0c040');
-    ctx.strokeStyle = lineGrad;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(60, 315);
-    ctx.lineTo(width - 60, 315);
-    ctx.stroke();
-    
-    // === ETF CARDS ===
-    const startY = 340;
-    const cardWidth = 540;
-    const cardHeight = 75;
-    const gap = 12;
-    
-    etfData.slice(0, 6).forEach((etf, i) => {
-        const col = i % 2;
-        const row = Math.floor(i / 2);
-        const x = 60 + col * (cardWidth + 40);
-        const y = startY + row * (cardHeight + gap);
-        
-        // Card background
-        const cardBg = ctx.createLinearGradient(x, y, x, y + cardHeight);
-        cardBg.addColorStop(0, 'rgba(22, 27, 34, 0.95)');
-        cardBg.addColorStop(1, 'rgba(13, 17, 23, 0.95)');
-        ctx.fillStyle = cardBg;
-        roundRect(ctx, x, y, cardWidth, cardHeight, 15);
-        ctx.fill();
-        
-        // Card border
-        ctx.strokeStyle = 'rgba(88, 166, 255, 0.3)';
-        ctx.lineWidth = 1;
-        roundRect(ctx, x, y, cardWidth, cardHeight, 15);
-        ctx.stroke();
-        
-        // Rank badge
-        ctx.fillStyle = 'rgba(88, 166, 255, 0.25)';
-        ctx.beginPath();
-        ctx.arc(x + 38, y + cardHeight/2, 25, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#58a6ff';
-        ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText((i+1).toString(), x + 38, y + cardHeight/2 + 8);
-        
-        // Ticker
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 30px -apple-system, BlinkMacSystemFont, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(etf.ticker, x + 80, y + cardHeight/2 + 11);
-        
-        // Signal badge
-        const sigColor = etf.signal.includes('STRONG') ? '#00ff7f' : '#3fb950';
-        const sigWidth = ctx.measureText(etf.signal).width + 35;
-        
-        ctx.shadowColor = sigColor;
-        ctx.shadowBlur = 20;
-        ctx.fillStyle = sigColor;
-        roundRect(ctx, x + cardWidth - sigWidth - 12, y + cardHeight/2 - 20, sigWidth, 40, 20);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(etf.signal, x + cardWidth - sigWidth/2 - 12, y + cardHeight/2 + 7);
-    });
-    
-    // === FOOTER ===
-    ctx.fillStyle = 'rgba(139, 148, 158, 0.5)';
-    ctx.font = '16px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Generated by V2 Master Router  |  ' + new Date().toLocaleDateString(), width/2, height - 25);
-    
-    // === CORNER ACCENTS ===
-    ctx.strokeStyle = '#f0c040';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(25, 55); ctx.lineTo(25, 20); ctx.lineTo(60, 20); ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(width - 25, 55); ctx.lineTo(width - 25, 20); ctx.lineTo(width - 60, 20); ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(25, height - 55); ctx.lineTo(25, height - 20); ctx.lineTo(60, height - 20); ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(width - 25, height - 55); ctx.lineTo(width - 25, height - 20); ctx.lineTo(width - 60, height - 20); ctx.stroke();
-    
-    // === DOWNLOAD ===
-    const link = document.createElement('a');
-    link.download = 'v2-screener-' + new Date().toISOString().slice(0,10) + '.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-    btn.textContent = '✓';
-    setTimeout(() => btn.textContent = '🖼️', 2000);
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-}
-
-}
-
-async function copyImage() {
-    const btn = document.querySelector('.copy-btn');
-    try {
-        const text = getClipboardItem();
-        if (text) {
-            await navigator.clipboard.writeText(text);
-            btn.textContent = '✓';
-            setTimeout(() => btn.textContent = '📋', 1500);
-        }
-    } catch(err) {
-        btn.textContent = '!';
-        setTimeout(() => btn.textContent = '📋', 1500);
-    }
-}
-
-function generateShareImage() {
-    const btn = document.querySelectorAll('.copy-btn')[1];
-    const regimeLabel = document.querySelector('.sig').textContent.trim();
-    const regimeScore = document.querySelector('.m .mv').textContent.trim();
-    const vix = document.querySelectorAll('.m')[2].querySelector('.mv').textContent.trim();
-    
-    const tables = document.querySelectorAll('table');
-    let etfData = [];
-    if (tables.length > 0) {
-        const rows = tables[0].querySelectorAll('tbody tr');
-        rows.forEach((row) => {
-            const cells = row.querySelectorAll('td');
-            if (cells.length >= 2) {
-                const sig = cells[cells.length - 1].textContent.trim();
-                if (sig !== 'HOLD') etfData.push({ ticker: cells[1].textContent.trim(), signal: sig });
-            }
-        });
-    }
-    
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const width = 600, height = 800;
-    canvas.width = width;
-    canvas.height = height;
-    
-    const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, '#0d1117');
-    gradient.addColorStop(1, '#161b22');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
-    
-    ctx.fillStyle = '#58a6ff';
-    ctx.font = 'bold 28px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('V2 Master Router', width/2, 50);
-    
-    ctx.font = 'bold 36px sans-serif';
-    ctx.fillStyle = regimeLabel.includes('RISK OFF') ? '#f85149' : 
-                  regimeLabel.includes('FULL') ? '#3fb950' : '#d29922';
-    ctx.fillText(regimeLabel, width/2, 110);
-    
-    ctx.font = '18px sans-serif';
-    ctx.fillStyle = '#8b949e';
-    ctx.fillText('Score: ' + regimeScore + '  |  VIX: ' + vix, width/2, 160);
-    
-    ctx.strokeStyle = '#30363d';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(50, 190);
-    ctx.lineTo(width-50, 190);
-    ctx.stroke();
-    
-    ctx.fillStyle = '#f0c040';
-    ctx.font = 'bold 24px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('Top ETFs', 50, 240);
-    
-    ctx.font = 'bold 20px sans-serif';
-    let y = 280;
-    etfData.slice(0, 10).forEach((etf, i) => {
-        ctx.fillStyle = '#c9d1d9';
-        ctx.fillText((i+1) + '. ' + etf.ticker, 80, y);
-        ctx.fillStyle = etf.signal.includes('STRONG') ? '#00ff7f' :
-                      etf.signal.includes('BUY') ? '#3fb950' : '#d29922';
-        ctx.fillText(etf.signal, 280, y);
-        y += 35;
-    });
-    
-    ctx.fillStyle = '#8b949e';
-    ctx.font = '14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(new Date().toLocaleString(), width/2, height - 30);
-    
-    // Download image
-    const link = document.createElement('a');
-    link.download = 'v2-screener-' + new Date().toISOString().slice(0,10) + '.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-    btn.textContent = '✓';
-    setTimeout(() => btn.textContent = '🖼️', 2000);
-}
-</script>
-</body></html>"""
     
     return html
 
