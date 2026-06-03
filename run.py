@@ -62,7 +62,7 @@ SQUEEZE_BONUS = 30  # Score bonus for squeeze candidates
 SECTOR_ETFS = ['XLK', 'XLE', 'XLV', 'XLY', 'XLF', 'XLRE']
 
 # Always-visible watchlist tickers
-WATCHLIST_TICKERS = ['SOXL', 'DRAM', 'KORU', 'BULZ', 'TECL']
+WATCHLIST_TICKERS = ['SOXL', 'DRAM', 'KORU', 'TECL']
 
 
 def get_sector_rotation():
@@ -1293,6 +1293,9 @@ td { font-size:.85rem; } tr:hover { background:#161b22; }
 .optional-col { display:none; }
 .toggle-btn { background:#30363d; color:#c9d1d9; border:1px solid #484f58; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:0.75rem; margin-bottom:8px; }
 .toggle-btn:hover { background:#484f58; }
+.copy-btn { background:#238636; color:#fff; border:1px solid #2ea043; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:600; margin:0 0 8px 8px; }
+.copy-btn:hover { background:#2ea043; }
+.copy-btn:active { background:#1f6f2e; }
 .top-featured { margin-bottom:1rem; }
 .top-featured h2 { color:#00ff7f; border-bottom:1px solid #00ff7f40; }
 .top-featured tr:hover td { background:rgba(0,255,127,0.05); }
@@ -1366,6 +1369,25 @@ function toggleDetails(row){
     row.classList.toggle('expanded');
   }
 }
+function copyWatchlist(){
+  var watchlistData = window.watchlistData || [];
+  if(watchlistData.length === 0){
+    alert('No watchlist data available');
+    return;
+  }
+  var text = 'today stocks:\\n';
+  watchlistData.forEach(function(item){
+    text += item.ticker + ' ' + item.signal + '\\n';
+  });
+  navigator.clipboard.writeText(text).then(function(){
+    var btn = document.querySelector('.copy-btn');
+    var orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  }).catch(function(err){
+    alert('Failed to copy: ' + err);
+  });
+}
 document.addEventListener('DOMContentLoaded',function(){
   var tables=document.querySelectorAll('table');
   tables.forEach(function(tbl){
@@ -1393,6 +1415,7 @@ document.addEventListener('DOMContentLoaded',function(){
 <h1>V4 Master Router ({mode})</h1><p class="date">{now}</p>
 <div class="sig {regime_cls}">{regime['label']}</div>
 <button class="toggle-btn" onclick="document.querySelectorAll('.optional-col').forEach(el=>el.style.display=el.style.display==='none'?'table-cell':'none');this.textContent=this.textContent==='Show Details'?'Hide Details':'Show Details'">Show Details</button>
+<button class="copy-btn" onclick="copyWatchlist()">📋 Copy Watchlist</button>
 <div class="metrics">
 <div class="m"><div class="ml">Regime Score</div><div class="mv">{regime['score']}/100</div></div>
 <div class="m"><div class="ml">Allocation</div><div class="mv">{int(alloc * 100)}%</div><div class="ms">{'OVERWEIGHT' if alloc >= 1.2 else ('UNDERWEIGHT' if alloc <= 0.8 else 'NEUTRAL')}</div></div>
@@ -1542,9 +1565,29 @@ document.addEventListener('DOMContentLoaded',function(){
             f"<tbody>{hist_rows}</tbody></table>"
         )
     
-    html += "</div></body></html>"
-    
-    
+    # Generate watchlist data for copy button
+    watchlist_data = []
+    for item in sections:
+        if len(item) == 3:
+            results, title, exclude_cols = item
+        else:
+            results, title = item
+            exclude_cols = []
+
+        if 'Watchlist' in title and results:
+            for i, r in enumerate(results, 1):
+                tk = r['Ticker']
+                freq = all_freqs.get(tk, 0)
+                sig = _signal(r, freq, i, len(results), regime.get('level', 4))
+                watchlist_data.append({'ticker': tk, 'signal': sig})
+            break
+
+    # Inject watchlist data into JavaScript using proper JSON encoding
+    watchlist_js = "<script>window.watchlistData = " + json.dumps(watchlist_data) + ";</script>"
+
+    html += watchlist_js + "</div></body></html>"
+
+
     return html
 
 def print_regime(regime):
