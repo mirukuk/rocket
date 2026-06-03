@@ -27,6 +27,9 @@ td { font-size:.85rem; } tr:hover { background:#161b22; }
 .optional-col { display:none; }
 .toggle-btn { background:#30363d; color:#c9d1d9; border:1px solid #484f58; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:0.75rem; margin-bottom:8px; }
 .toggle-btn:hover { background:#484f58; }
+.copy-btn { background:#238636; color:#fff; border:1px solid #2ea043; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:600; margin:0 0 8px 8px; }
+.copy-btn:hover { background:#2ea043; }
+.copy-btn:active { background:#1f6f2e; }
 .top-featured { margin-bottom:1rem; }
 .top-featured h2 { color:#00ff7f; border-bottom:1px solid #00ff7f40; }
 .top-featured tr:hover td { background:rgba(0,255,127,0.05); }
@@ -65,6 +68,25 @@ function toggleDetails(row){
     row.classList.toggle('expanded');
   }
 }
+function copyWatchlist(){
+  var watchlistData = window.watchlistData || [];
+  if(watchlistData.length === 0){
+    alert('No watchlist data available');
+    return;
+  }
+  var text = 'today stocks:\n';
+  watchlistData.forEach(function(item){
+    text += item.ticker + ' ' + item.signal + '\n';
+  });
+  navigator.clipboard.writeText(text).then(function(){
+    var btn = document.querySelector('.copy-btn');
+    var orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  }).catch(function(err){
+    alert('Failed to copy: ' + err);
+  });
+}
 document.addEventListener('DOMContentLoaded',function(){
   var tables=document.querySelectorAll('table');
   tables.forEach(function(tbl){
@@ -84,161 +106,29 @@ document.addEventListener('DOMContentLoaded',function(){
 </script>
 </head>
 <body><div class="c">
-<h1>V4 Master Router (BULL MODE)</h1><p class="date">2026-06-03 06:42</p>
+<h1>V4 Master Router (BULL MODE)</h1><p class="date">2026-06-03 23:23</p>
 <div class="sig buy">MODERATE</div>
 <button class="toggle-btn" onclick="document.querySelectorAll('.optional-col').forEach(el=>el.style.display=el.style.display==='none'?'table-cell':'none');this.textContent=this.textContent==='Show Details'?'Hide Details':'Show Details'">Show Details</button>
+<button class="copy-btn" onclick="copyWatchlist()">📋 Copy Watchlist</button>
 <div class="metrics">
 <div class="m"><div class="ml">Regime Score</div><div class="mv">65/100</div></div>
 <div class="m"><div class="ml">Allocation</div><div class="mv">6000%</div><div class="ms">OVERWEIGHT</div></div>
-<div class="m"><div class="ml">Breadth Eq-W vs SPY</div><div class="mv">-1.6%</div></div>
-<div class="m"><div class="ml">VIX</div><div class="mv">15.77</div></div>
-<div class="m"><div class="ml">SPY vs 200MA</div><div class="mv">$759.57</div><div class="ms">ABOVE $679.87</div></div>
+<div class="m"><div class="ml">Breadth Eq-W vs SPY</div><div class="mv">-0.62%</div></div>
+<div class="m"><div class="ml">VIX</div><div class="mv">16.1</div></div>
+<div class="m"><div class="ml">SPY vs 200MA</div><div class="mv">$755.65</div><div class="ms">ABOVE $680.46</div></div>
 <div class="m"><div class="ml">Stops</div><div class="mv">15%/25%</div><div class="ms">Stock / Leveraged</div></div>
-</div><h2>★ TOP 3 FEATURED ETFS ★</h2><table><thead><tr><th>#</th><th>Ticker</th><th>$Vol</th><th class='optional-col'>Score</th><th class='optional-col'>Freq</th><th class='tv-header'>Signal</th><th class='tv-header'>BUY<br>TODAY</th></tr></thead><tbody><tr class='clickable-row' onclick='toggleDetails(this)'><td>1</td><td>MVLL</td><td>$318.0M</td><td class='optional-col'>300</td><td class='optional-col'>5/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+</div><h2>★ TOP 3 FEATURED ETFS ★</h2><table><thead><tr><th>#</th><th>Ticker</th><th>$Vol</th><th class='optional-col'>Score</th><th class='optional-col'>Freq</th><th class='tv-header'>Signal</th><th class='tv-header'>BUY<br>TODAY</th></tr></thead><tbody><tr class='clickable-row' onclick='toggleDetails(this)'><td>1</td><td>SOXL</td><td>$15.56B</td><td class='optional-col'>300</td><td class='optional-col'>15/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="7">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">88.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">98.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">181.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">703.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.9x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">87</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>2</td><td>MUU</td><td>$3.26B</td><td class='optional-col'>300</td><td class='optional-col'>6/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="7">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">19.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">30.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">81.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">519.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.1x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">77</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>3</td><td>MULL</td><td>$405.4M</td><td class='optional-col'>300</td><td class='optional-col'>6/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="7">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">19.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">30.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">81.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">510.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.9x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
-                    </div>
-                </td>
-            </tr>
-            </tbody></table><h2>ALL ETFs</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Today</th><th>15D</th><th>$Vol</th><th class='optional-col'>Score</th><th class='optional-col'>ATR%</th><th class='optional-col'>Freq</th><th class='tv-header'>Signal</th><th class='tv-header'>BUY<br>TODAY</th></tr></thead><tbody><tr class='clickable-row' onclick='toggleDetails(this)'><td>1</td><td>MVLL</td><td>+65.00%</td><td>+181.43%</td><td>$318.0M</td><td class='optional-col'>300</td><td class='optional-col'>9.9%</td><td class='optional-col'>5/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">88.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">98.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">181.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">703.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.9x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">87</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>2</td><td>MUU</td><td>+5.32%</td><td>+81.78%</td><td>$3.26B</td><td class='optional-col'>300</td><td class='optional-col'>9.3%</td><td class='optional-col'>6/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">19.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">30.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">81.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">519.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.1x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">77</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>3</td><td>MULL</td><td>+5.57%</td><td>+81.43%</td><td>$405.4M</td><td class='optional-col'>300</td><td class='optional-col'>9.2%</td><td class='optional-col'>6/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">19.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">30.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">81.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">510.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.9x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>4</td><td>KORU</td><td>-3.17%</td><td>+60.89%</td><td>$868.0M</td><td class='optional-col'>149</td><td class='optional-col'>10.3%</td><td class='optional-col'>2/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>13%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">12.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">25.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">60.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">204.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">21.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">23.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">50.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">406.2%</div></div>
                         <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.7x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">69</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>5</td><td>SOXL</td><td>+17.31%</td><td>+54.37%</td><td>$15.34B</td><td class='optional-col'>300</td><td class='optional-col'>9.3%</td><td class='optional-col'>15/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">18.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">22.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">54.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">399.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
                         <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
@@ -246,18 +136,56 @@ document.addEventListener('DOMContentLoaded',function(){
                     </div>
                 </td>
             </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>6</td><td>SOXL</td><td>+17.31%</td><td>+54.37%</td><td>$15.34B</td><td class='optional-col'>300</td><td class='optional-col'>9.3%</td><td class='optional-col'>15/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>2</td><td>QCML</td><td>$126.0M</td><td class='optional-col'>283</td><td class='optional-col'>4/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>25%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="7">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">18.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">3.9%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">30.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">196.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">60</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>3</td><td>TECL</td><td>$320.8M</td><td class='optional-col'>300</td><td class='optional-col'>5/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="7">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">0.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">15.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">34.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">159.3%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.0x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
+                    </div>
+                </td>
+            </tr>
+            </tbody></table><h2>ALL ETFs</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Today</th><th>15D</th><th>$Vol</th><th class='optional-col'>Score</th><th class='optional-col'>ATR%</th><th class='optional-col'>Freq</th><th class='tv-header'>Signal</th><th class='tv-header'>BUY<br>TODAY</th></tr></thead><tbody><tr class='clickable-row' onclick='toggleDetails(this)'><td>1</td><td>SOXL</td><td>+3.75%</td><td>+49.98%</td><td>$15.56B</td><td class='optional-col'>300</td><td class='optional-col'>9.2%</td><td class='optional-col'>15/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">18.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">22.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">54.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">399.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">21.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">23.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">50.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">406.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.7x</div></div>
                         <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
@@ -265,151 +193,75 @@ document.addEventListener('DOMContentLoaded',function(){
                     </div>
                 </td>
             </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>7</td><td>TECL</td><td>+3.64%</td><td>+42.57%</td><td>$338.0M</td><td class='optional-col'>300</td><td class='optional-col'>5.3%</td><td class='optional-col'>5/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>2</td><td>TECL</td><td>-3.00%</td><td>+34.46%</td><td>$320.8M</td><td class='optional-col'>300</td><td class='optional-col'>5.6%</td><td class='optional-col'>5/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">11.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">23.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">42.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">167.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.1x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">81</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>8</td><td>TECL</td><td>+3.64%</td><td>+42.57%</td><td>$338.0M</td><td class='optional-col'>300</td><td class='optional-col'>5.3%</td><td class='optional-col'>5/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">11.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">23.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">42.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">167.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.1x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">81</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>9</td><td>DRAM</td><td>+2.31%</td><td>+35.61%</td><td>$2.75B</td><td class='optional-col'>87</td><td class='optional-col'>5.4%</td><td class='optional-col'>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>5%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">10.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">14.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">35.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.9x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">0</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>10</td><td>AMDL</td><td>+4.30%</td><td>+31.55%</td><td>$756.4M</td><td class='optional-col'>300</td><td class='optional-col'>9.6%</td><td class='optional-col'>3/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>24%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">1.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">10.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">31.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">472.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.5x</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">0.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">15.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">34.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">159.3%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.0x</div></div>
                         <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">69</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
                     </div>
                 </td>
             </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>11</td><td>HIBL</td><td>+5.48%</td><td>+28.27%</td><td>$6.8M</td><td class='optional-col'>255</td><td class='optional-col'>5.3%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>3</td><td>KORU</td><td>-3.17%</td><td>+32.68%</td><td>$813.9M</td><td class='optional-col'>78</td><td class='optional-col'>10.4%</td><td class='optional-col'>2/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>11%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">6.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">14.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">28.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">94.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-6.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">7.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">32.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">217.4%</div></div>
                         <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.6x</div></div>
                         <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">73</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">63</div></div>
                     </div>
                 </td>
             </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>12</td><td>WEBL</td><td>-3.91%</td><td>+27.48%</td><td>$7.6M</td><td class='optional-col'>201</td><td class='optional-col'>5.0%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>4</td><td>QCML</td><td>+7.43%</td><td>+30.82%</td><td>$126.0M</td><td class='optional-col'>283</td><td class='optional-col'>13.4%</td><td class='optional-col'>4/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>25%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">2.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">12.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">27.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">47.3%</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">18.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">3.9%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">30.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">196.5%</div></div>
                         <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">80</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">60</div></div>
                     </div>
                 </td>
             </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>13</td><td>FNGU</td><td>-1.13%</td><td>+23.93%</td><td>$212.7M</td><td class='optional-col'>250</td><td class='optional-col'>4.7%</td><td class='optional-col'>0/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>5</td><td>HIBL</td><td>-1.43%</td><td>+26.64%</td><td>$6.5M</td><td class='optional-col'>241</td><td class='optional-col'>5.5%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">2.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">12.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">23.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">73.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.0x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">74</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>14</td><td>BULZ</td><td>-1.72%</td><td>+22.07%</td><td>$66.2M</td><td class='optional-col'>156</td><td class='optional-col'>5.3%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">0.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">11.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">22.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">138.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">4.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">9.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">26.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">95.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.6x</div></div>
                         <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
@@ -417,474 +269,94 @@ document.addEventListener('DOMContentLoaded',function(){
                     </div>
                 </td>
             </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>15</td><td>USD</td><td>+4.76%</td><td>+18.13%</td><td>$123.5M</td><td class='optional-col'>300</td><td class='optional-col'>5.8%</td><td class='optional-col'>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>20%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>6</td><td>DRAM</td><td>-0.78%</td><td>+26.57%</td><td>$2.66B</td><td class='optional-col'>45</td><td class='optional-col'>5.3%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>2%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">11.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">13.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">18.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">111.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">1.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">10.3%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">26.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">0</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>7</td><td>WEBL</td><td>-5.41%</td><td>+18.19%</td><td>$6.8M</td><td class='optional-col'>56</td><td class='optional-col'>5.3%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>21%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-9.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">1.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">18.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">41.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">68</div></div>
                     </div>
                 </td>
             </tr>
-            </tbody></table><h2>Top Bull Longs</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Today</th><th>15D</th><th>$Vol</th><th class='optional-col'>Score</th><th class='optional-col'>ATR%</th><th class='optional-col'>Freq</th><th class='tv-header'>Signal</th><th class='tv-header'>BUY<br>TODAY</th></tr></thead><tbody><tr class='clickable-row' onclick='toggleDetails(this)'><td>1</td><td>SOXL</td><td>+17.31%</td><td>+54.37%</td><td>$15.34B</td><td class='optional-col'>300</td><td class='optional-col'>9.3%</td><td class='optional-col'>15/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>8</td><td>CHPY</td><td>+0.00%</td><td>+15.87%</td><td>$57.9M</td><td class='optional-col'>300</td><td class='optional-col'>3.4%</td><td class='optional-col'>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">18.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">22.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">54.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">399.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>2</td><td>TECL</td><td>+3.64%</td><td>+42.57%</td><td>$338.0M</td><td class='optional-col'>300</td><td class='optional-col'>5.3%</td><td class='optional-col'>5/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">11.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">23.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">42.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">167.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.1x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">81</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>3</td><td>HIBL</td><td>+5.48%</td><td>+28.27%</td><td>$6.8M</td><td class='optional-col'>255</td><td class='optional-col'>5.3%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">6.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">14.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">28.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">94.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.6x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">73</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>4</td><td>WEBL</td><td>-3.91%</td><td>+27.48%</td><td>$7.6M</td><td class='optional-col'>201</td><td class='optional-col'>5.0%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">2.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">12.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">27.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">47.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">80</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>5</td><td>FNGU</td><td>-1.13%</td><td>+23.93%</td><td>$212.7M</td><td class='optional-col'>250</td><td class='optional-col'>4.7%</td><td class='optional-col'>0/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">2.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">12.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">23.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">73.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">4.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">5.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">15.9%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">65.3%</div></div>
                         <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.0x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">74</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>6</td><td>TQQQ</td><td>+1.37%</td><td>+16.36%</td><td>$6.00B</td><td class='optional-col'>273</td><td class='optional-col'>3.8%</td><td class='optional-col'>5/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">3.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">6.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">16.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">76.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">75</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>7</td><td>UDOW</td><td>+1.51%</td><td>+9.39%</td><td>$193.2M</td><td class='optional-col'>119</td><td class='optional-col'>2.7%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>7%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">1.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">4.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">9.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">21.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.0x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">72</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>8</td><td>TNA</td><td>+2.69%</td><td>+8.72%</td><td>$461.3M</td><td class='optional-col'>156</td><td class='optional-col'>4.6%</td><td class='optional-col'>2/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>25%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">1.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">1.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">8.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">45.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
                         <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">61</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>9</td><td>SPXL</td><td>+0.41%</td><td>+8.20%</td><td>$579.3M</td><td class='optional-col'>172</td><td class='optional-col'>2.5%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">1.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">3.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">8.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">36.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.9x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">70</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>10</td><td>UPRO</td><td>+0.39%</td><td>+8.13%</td><td>$431.2M</td><td class='optional-col'>170</td><td class='optional-col'>2.5%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">1.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">3.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">8.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">36.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.9x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">70</div></div>
-                    </div>
-                </td>
-            </tr>
-            </tbody></table><h2>Top Stocks</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Today</th><th>15D</th><th>$Vol</th><th class='optional-col'>Score</th><th class='optional-col'>ATR%</th><th class='optional-col'>Freq</th><th class='tv-header'>Signal</th><th class='tv-header'>BUY<br>TODAY</th></tr></thead><tbody><tr class='clickable-row' onclick='toggleDetails(this)'><td>1</td><td>MRVU</td><td>+65.11%</td><td>+183.72%</td><td>$90.8M</td><td class='optional-col'>300</td><td class='optional-col'>9.8%</td><td class='optional-col'>2/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">88.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">98.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">183.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">716.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.6x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">87</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>2</td><td>MVLL</td><td>+65.00%</td><td>+181.43%</td><td>$318.0M</td><td class='optional-col'>300</td><td class='optional-col'>9.9%</td><td class='optional-col'>5/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">88.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">98.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">181.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">703.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.9x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">87</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>3</td><td>SMCX</td><td>+13.88%</td><td>+120.83%</td><td>$115.0M</td><td class='optional-col'>67</td><td class='optional-col'>8.9%</td><td class='optional-col'>2/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">17.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">68.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">120.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">45.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.1x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">87</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>4</td><td>SWMR</td><td>+37.73%</td><td>+117.87%</td><td>$61.9M</td><td class='optional-col'>77</td><td class='optional-col'>9.3%</td><td class='optional-col'>2/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">39.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">61.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">117.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.6x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">85</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>5</td><td>HPE</td><td>+19.47%</td><td>+85.87%</td><td>$1.84B</td><td class='optional-col'>255</td><td class='optional-col'>6.1%</td><td class='optional-col'>3/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">30.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">50.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">85.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">159.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value warning">2.4x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">92</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>6</td><td>MUU</td><td>+5.32%</td><td>+81.78%</td><td>$3.26B</td><td class='optional-col'>300</td><td class='optional-col'>9.3%</td><td class='optional-col'>6/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">19.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">30.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">81.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">519.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.1x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">77</div></div>
                     </div>
                 </td>
             </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>7</td><td>MULL</td><td>+5.57%</td><td>+81.43%</td><td>$405.4M</td><td class='optional-col'>300</td><td class='optional-col'>9.2%</td><td class='optional-col'>6/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>9</td><td>FNGU</td><td>-3.72%</td><td>+14.78%</td><td>$201.3M</td><td class='optional-col'>105</td><td class='optional-col'>4.8%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>22%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">19.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">30.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">81.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">510.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-4.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">4.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">14.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">68.2%</div></div>
                         <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.9x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">65</div></div>
                     </div>
                 </td>
             </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>8</td><td>MRVL</td><td>+32.52%</td><td>+76.77%</td><td>$9.71B</td><td class='optional-col'>300</td><td class='optional-col'>6.8%</td><td class='optional-col'>2/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>10</td><td>TQQQ</td><td>-0.75%</td><td>+12.08%</td><td>$5.85B</td><td class='optional-col'>246</td><td class='optional-col'>3.7%</td><td class='optional-col'>6/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">41.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">46.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">76.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">214.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.7x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">87</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>9</td><td>BB</td><td>+6.17%</td><td>+65.92%</td><td>$360.0M</td><td class='optional-col'>300</td><td class='optional-col'>6.3%</td><td class='optional-col'>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">14.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">19.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">65.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">196.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.3x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">94</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>10</td><td>SHAZ</td><td>+6.07%</td><td>+61.96%</td><td>$53.7M</td><td class='optional-col'>246</td><td class='optional-col'>8.8%</td><td class='optional-col'>2/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">11.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">28.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">62.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">353.9%</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">0.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">3.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">12.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">75.5%</div></div>
                         <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">79</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>11</td><td>SOXL</td><td>+17.31%</td><td>+54.37%</td><td>$15.34B</td><td class='optional-col'>300</td><td class='optional-col'>9.3%</td><td class='optional-col'>15/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">18.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">22.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">54.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">399.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>12</td><td>SMCI</td><td>+7.02%</td><td>+53.00%</td><td>$2.41B</td><td class='optional-col'>181</td><td class='optional-col'>5.9%</td><td class='optional-col'>3/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">8.8%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">31.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">53.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">56.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.3x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">86</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>13</td><td>ONDS</td><td>+0.89%</td><td>+50.22%</td><td>$1.19B</td><td class='optional-col'>82</td><td class='optional-col'>9.5%</td><td class='optional-col'>3/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>10%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">2.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">25.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">50.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">39.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.5x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">73</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>14</td><td>RCAT</td><td>+0.74%</td><td>+35.54%</td><td>$264.1M</td><td class='optional-col'>88</td><td class='optional-col'>8.1%</td><td class='optional-col'>2/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>2%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">3.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">40.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">35.5%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">6.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value warning">2.0x</div></div>
                         <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
@@ -892,37 +364,113 @@ document.addEventListener('DOMContentLoaded',function(){
                     </div>
                 </td>
             </tr>
-            </tbody></table><h2>Watchlist</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Today</th><th>15D</th><th>$Vol</th><th class='optional-col'>Score</th><th class='optional-col'>ATR%</th><th class='optional-col'>Freq</th><th class='tv-header'>Signal</th><th class='tv-header'>BUY<br>TODAY</th></tr></thead><tbody><tr class='clickable-row' onclick='toggleDetails(this)'><td>1</td><td>KORU</td><td>-3.17%</td><td>+60.89%</td><td>$868.0M</td><td class='optional-col'>149</td><td class='optional-col'>10.3%</td><td class='optional-col'>2/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>13%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>11</td><td>UDOW</td><td>-2.47%</td><td>+7.24%</td><td>$183.7M</td><td class='optional-col'>44</td><td class='optional-col'>2.9%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>21%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">12.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">25.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">60.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">204.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.7x</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-1.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">1.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">7.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">18.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.9x</div></div>
                         <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">69</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">65</div></div>
                     </div>
                 </td>
             </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>2</td><td>SOXL</td><td>+17.31%</td><td>+54.37%</td><td>$15.34B</td><td class='optional-col'>300</td><td class='optional-col'>9.3%</td><td class='optional-col'>15/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>12</td><td>SPXL</td><td>-1.60%</td><td>+4.75%</td><td>$559.1M</td><td class='optional-col'>82</td><td class='optional-col'>2.4%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>12%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">18.7%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">22.2%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">54.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">399.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-1.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">0.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">4.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">35.1%</div></div>
                         <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">62</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>13</td><td>UPRO</td><td>-1.58%</td><td>+4.69%</td><td>$411.1M</td><td class='optional-col'>82</td><td class='optional-col'>2.4%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>12%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-1.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">0.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">4.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">34.9%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">62</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>14</td><td>TNA</td><td>-3.61%</td><td>+4.68%</td><td>$436.5M</td><td class='optional-col'>56</td><td class='optional-col'>4.9%</td><td class='optional-col'>2/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>21%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-1.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">-4.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">4.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">40.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.7x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">55</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>15</td><td>UCO</td><td>+2.26%</td><td>-0.46%</td><td>$196.9M</td><td class='optional-col'>145</td><td class='optional-col'>5.7%</td><td class='optional-col'>3/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>17%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">4.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">7.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">-0.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">39.9%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.6x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">49</div></div>
+                    </div>
+                </td>
+            </tr>
+            </tbody></table><h2>Top Bull Longs</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Today</th><th>15D</th><th>$Vol</th><th class='optional-col'>Score</th><th class='optional-col'>ATR%</th><th class='optional-col'>Freq</th><th class='tv-header'>Signal</th><th class='tv-header'>BUY<br>TODAY</th></tr></thead><tbody><tr class='clickable-row' onclick='toggleDetails(this)'><td>1</td><td>SOXL</td><td>+3.75%</td><td>+49.98%</td><td>$15.56B</td><td class='optional-col'>300</td><td class='optional-col'>9.2%</td><td class='optional-col'>15/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">21.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">23.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">50.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">406.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.7x</div></div>
                         <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
@@ -930,56 +478,37 @@ document.addEventListener('DOMContentLoaded',function(){
                     </div>
                 </td>
             </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>3</td><td>TECL</td><td>+3.64%</td><td>+42.57%</td><td>$338.0M</td><td class='optional-col'>249</td><td class='optional-col'>5.3%</td><td class='optional-col'>5/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>2</td><td>TECL</td><td>-3.00%</td><td>+34.46%</td><td>$320.8M</td><td class='optional-col'>300</td><td class='optional-col'>5.6%</td><td class='optional-col'>5/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">11.4%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">23.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">42.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">167.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.1x</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">0.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">15.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">34.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">159.3%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.0x</div></div>
                         <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">81</div></div>
-                    </div>
-                </td>
-            </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>4</td><td>DRAM</td><td>+2.31%</td><td>+35.61%</td><td>$2.75B</td><td class='optional-col'>87</td><td class='optional-col'>5.4%</td><td class='optional-col'>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>5%</td></tr>
-            <tr class="details-row" style="display:none">
-                <td colspan="10">
-                    <div class="detail-grid">
-                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">10.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">14.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">35.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">0.0%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.9x</div></div>
-                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
-                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
-                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">0</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
                     </div>
                 </td>
             </tr>
-            <tr class='clickable-row' onclick='toggleDetails(this)'><td>5</td><td>BULZ</td><td>-1.72%</td><td>+22.07%</td><td>$66.2M</td><td class='optional-col'>156</td><td class='optional-col'>5.3%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>3</td><td>HIBL</td><td>-1.43%</td><td>+26.64%</td><td>$6.5M</td><td class='optional-col'>241</td><td class='optional-col'>5.5%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
             <tr class="details-row" style="display:none">
                 <td colspan="10">
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
-                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">0.3%</div></div>
-                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">11.6%</div></div>
-                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">22.1%</div></div>
-                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">138.9%</div></div>
-                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">4.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">9.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">26.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">95.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.6x</div></div>
                         <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
@@ -987,4 +516,441 @@ document.addEventListener('DOMContentLoaded',function(){
                     </div>
                 </td>
             </tr>
-            </tbody></table><h2>Stock Score Ranking (Last 10 Days)</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Freq</th></tr></thead><tbody><tr><td>1</td><td>SOXL</td><td>15/10</td></tr><tr><td>2</td><td>MUU</td><td>6/10</td></tr><tr><td>3</td><td>MULL</td><td>6/10</td></tr><tr><td>4</td><td>ARMG</td><td>5/10</td></tr><tr><td>5</td><td>TQQQ</td><td>5/10</td></tr><tr><td>6</td><td>MVLL</td><td>5/10</td></tr><tr><td>7</td><td>EWT</td><td>5/10</td></tr><tr><td>8</td><td>TECL</td><td>5/10</td></tr><tr><td>9</td><td>SOXX</td><td>5/10</td></tr><tr><td>10</td><td>SOXQ</td><td>5/10</td></tr><tr><td>11</td><td>SMH</td><td>5/10</td></tr><tr><td>12</td><td>IONQ</td><td>3/10</td></tr><tr><td>13</td><td>NOK</td><td>3/10</td></tr><tr><td>14</td><td>HPE</td><td>3/10</td></tr><tr><td>15</td><td>ONDS</td><td>3/10</td></tr><tr><td>16</td><td>SMCI</td><td>3/10</td></tr><tr><td>17</td><td>FLTW</td><td>3/10</td></tr><tr><td>18</td><td>QCML</td><td>3/10</td></tr><tr><td>19</td><td>AMDL</td><td>3/10</td></tr><tr><td>20</td><td>MU</td><td>2/10</td></tr></tbody></table></div></body></html>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>4</td><td>WEBL</td><td>-5.41%</td><td>+18.19%</td><td>$6.8M</td><td class='optional-col'>56</td><td class='optional-col'>5.3%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>21%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-9.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">1.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">18.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">41.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">68</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>5</td><td>FNGU</td><td>-3.72%</td><td>+14.78%</td><td>$201.3M</td><td class='optional-col'>105</td><td class='optional-col'>4.8%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>22%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-4.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">4.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">14.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">68.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.9x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">65</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>6</td><td>TQQQ</td><td>-0.75%</td><td>+12.08%</td><td>$5.85B</td><td class='optional-col'>246</td><td class='optional-col'>3.7%</td><td class='optional-col'>6/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">0.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">3.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">12.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">75.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">70</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>7</td><td>UDOW</td><td>-2.47%</td><td>+7.24%</td><td>$183.7M</td><td class='optional-col'>44</td><td class='optional-col'>2.9%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>21%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-1.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">1.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">7.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">18.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.9x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">65</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>8</td><td>SPXL</td><td>-1.60%</td><td>+4.75%</td><td>$559.1M</td><td class='optional-col'>82</td><td class='optional-col'>2.4%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>12%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-1.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">0.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">4.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">35.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">62</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>9</td><td>UPRO</td><td>-1.58%</td><td>+4.69%</td><td>$411.1M</td><td class='optional-col'>82</td><td class='optional-col'>2.4%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>12%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-1.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">0.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">4.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">34.9%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">62</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>10</td><td>TNA</td><td>-3.61%</td><td>+4.68%</td><td>$436.5M</td><td class='optional-col'>56</td><td class='optional-col'>4.9%</td><td class='optional-col'>2/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>21%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-1.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">-4.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">4.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">40.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.7x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">55</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>11</td><td>DRN</td><td>+2.57%</td><td>-3.08%</td><td>$8.6M</td><td class='optional-col'>20</td><td class='optional-col'>3.7%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>2%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">3.9%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">-4.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">-3.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">4.9%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.7x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">45</div></div>
+                    </div>
+                </td>
+            </tr>
+            </tbody></table><h2>Top Stocks</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Today</th><th>15D</th><th>$Vol</th><th class='optional-col'>Score</th><th class='optional-col'>ATR%</th><th class='optional-col'>Freq</th><th class='tv-header'>Signal</th><th class='tv-header'>BUY<br>TODAY</th></tr></thead><tbody><tr class='clickable-row' onclick='toggleDetails(this)'><td>1</td><td>MRVU</td><td>+11.76%</td><td>+172.16%</td><td>$111.6M</td><td class='optional-col'>300</td><td class='optional-col'>9.8%</td><td class='optional-col'>2/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">84.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">109.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">172.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">801.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.6x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">88</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>2</td><td>MVLL</td><td>+10.74%</td><td>+168.74%</td><td>$401.1M</td><td class='optional-col'>300</td><td class='optional-col'>9.9%</td><td class='optional-col'>5/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">82.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">108.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">168.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">779.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.9x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">88</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>3</td><td>MRVL</td><td>+5.52%</td><td>+72.44%</td><td>$10.87B</td><td class='optional-col'>300</td><td class='optional-col'>6.8%</td><td class='optional-col'>2/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">39.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">49.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">72.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">229.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.6x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">87</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>4</td><td>BB</td><td>+1.79%</td><td>+72.21%</td><td>$376.4M</td><td class='optional-col'>300</td><td class='optional-col'>6.5%</td><td class='optional-col'>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">8.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">19.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">72.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">204.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.2x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">96</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>5</td><td>VSH</td><td>+4.13%</td><td>+69.01%</td><td>$459.8M</td><td class='optional-col'>300</td><td class='optional-col'>6.4%</td><td class='optional-col'>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">16.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">24.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">69.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">278.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.2x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">90</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>6</td><td>MUU</td><td>-0.79%</td><td>+64.56%</td><td>$3.17B</td><td class='optional-col'>300</td><td class='optional-col'>9.5%</td><td class='optional-col'>6/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">4.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">30.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">64.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">473.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.9x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">74</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>7</td><td>MULL</td><td>-1.27%</td><td>+63.15%</td><td>$386.8M</td><td class='optional-col'>300</td><td class='optional-col'>9.5%</td><td class='optional-col'>5/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>9%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">4.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">30.3%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">63.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">462.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.7x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">73</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>8</td><td>SOXL</td><td>+3.93%</td><td>+50.24%</td><td>$15.59B</td><td class='optional-col'>300</td><td class='optional-col'>9.2%</td><td class='optional-col'>15/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">21.9%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">23.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">50.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">407.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.7x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>9</td><td>AMUU</td><td>+5.28%</td><td>+40.60%</td><td>$43.3M</td><td class='optional-col'>300</td><td class='optional-col'>8.7%</td><td class='optional-col'>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">10.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">6.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">40.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">503.3%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.7x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">73</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>10</td><td>AVL</td><td>+2.71%</td><td>+35.28%</td><td>$39.8M</td><td class='optional-col'>216</td><td class='optional-col'>6.6%</td><td class='optional-col'>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">12.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">30.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">35.3%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">91.3%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.9x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>11</td><td>AVGX</td><td>+2.53%</td><td>+34.50%</td><td>$49.7M</td><td class='optional-col'>214</td><td class='optional-col'>6.6%</td><td class='optional-col'>1/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">12.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">30.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">34.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">89.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value warning">2.1x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value warning">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
+                    </div>
+                </td>
+            </tr>
+            </tbody></table><h2>Watchlist</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Today</th><th>15D</th><th>$Vol</th><th class='optional-col'>Score</th><th class='optional-col'>ATR%</th><th class='optional-col'>Freq</th><th class='tv-header'>Signal</th><th class='tv-header'>BUY<br>TODAY</th></tr></thead><tbody><tr class='clickable-row' onclick='toggleDetails(this)'><td>1</td><td>SOXL</td><td>+3.75%</td><td>+49.97%</td><td>$15.56B</td><td class='optional-col'>300</td><td class='optional-col'>9.2%</td><td class='optional-col'>15/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value warning">21.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">23.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">50.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">406.1%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.7x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>2</td><td>TECL</td><td>-2.95%</td><td>+34.53%</td><td>$321.0M</td><td class='optional-col'>181</td><td class='optional-col'>5.6%</td><td class='optional-col'>5/10</td><td><span style='color:#3fb950;font-weight:bold'>BUY</span></td><td style='font-weight:bold;color:#00ff7f'>15%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">0.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">15.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">34.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">159.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">1.0x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value sell">76</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>3</td><td>KORU</td><td>-3.17%</td><td>+32.68%</td><td>$813.9M</td><td class='optional-col'>78</td><td class='optional-col'>10.4%</td><td class='optional-col'>2/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>11%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">-6.2%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">7.8%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">32.7%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">217.4%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.6x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">63</div></div>
+                    </div>
+                </td>
+            </tr>
+            <tr class='clickable-row' onclick='toggleDetails(this)'><td>4</td><td>DRAM</td><td>-0.78%</td><td>+26.57%</td><td>$2.66B</td><td class='optional-col'>45</td><td class='optional-col'>5.3%</td><td class='optional-col'>0/10</td><td><span style='color:#d29922;font-weight:bold'>HOLD</span></td><td style='font-weight:bold;color:#00ff7f'>2%</td></tr>
+            <tr class="details-row" style="display:none">
+                <td colspan="10">
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value ">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value ">0.0</div></div>
+                        <div class="detail-item"><div class="detail-label">3D %</div><div class="detail-value ">1.5%</div></div>
+                        <div class="detail-item"><div class="detail-label">5D %</div><div class="detail-value">10.3%</div></div>
+                        <div class="detail-item"><div class="detail-label">15D %</div><div class="detail-value">26.6%</div></div>
+                        <div class="detail-item"><div class="detail-label">13W %</div><div class="detail-value">0.0%</div></div>
+                        <div class="detail-item"><div class="detail-label">Vol Surge</div><div class="detail-value ">0.8x</div></div>
+                        <div class="detail-item"><div class="detail-label">Acceleration</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Breakout</div><div class="detail-value sell">✗</div></div>
+                        <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value ">✓</div></div>
+                        <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value ">0</div></div>
+                    </div>
+                </td>
+            </tr>
+            </tbody></table><h2>Stock Score Ranking (Last 10 Days)</h2><table><thead><tr><th>#</th><th>Ticker</th><th>Freq</th></tr></thead><tbody><tr><td>1</td><td>SOXL</td><td>15/10</td></tr><tr><td>2</td><td>TQQQ</td><td>6/10</td></tr><tr><td>3</td><td>MUU</td><td>6/10</td></tr><tr><td>4</td><td>ARMG</td><td>5/10</td></tr><tr><td>5</td><td>MULL</td><td>5/10</td></tr><tr><td>6</td><td>MVLL</td><td>5/10</td></tr><tr><td>7</td><td>TECL</td><td>5/10</td></tr><tr><td>8</td><td>SOXX</td><td>5/10</td></tr><tr><td>9</td><td>SOXQ</td><td>5/10</td></tr><tr><td>10</td><td>SMH</td><td>5/10</td></tr><tr><td>11</td><td>QCML</td><td>4/10</td></tr><tr><td>12</td><td>EWT</td><td>4/10</td></tr><tr><td>13</td><td>RGTI</td><td>3/10</td></tr><tr><td>14</td><td>NOK</td><td>3/10</td></tr><tr><td>15</td><td>HPE</td><td>3/10</td></tr><tr><td>16</td><td>ONDS</td><td>3/10</td></tr><tr><td>17</td><td>SMCI</td><td>3/10</td></tr><tr><td>18</td><td>UCO</td><td>3/10</td></tr><tr><td>19</td><td>RDW</td><td>2/10</td></tr><tr><td>20</td><td>ARM</td><td>2/10</td></tr></tbody></table><script>window.watchlistData = [{"ticker": "SOXL", "signal": "BUY"}, {"ticker": "TECL", "signal": "BUY"}, {"ticker": "KORU", "signal": "HOLD"}, {"ticker": "DRAM", "signal": "HOLD"}];</script></div></body></html>
