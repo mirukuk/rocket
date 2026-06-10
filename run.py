@@ -16,6 +16,14 @@ import sys, os, json, re, argparse
 from datetime import datetime
 from collections import Counter
 
+# Force UTF-8 stdout/stderr so emoji and box-drawing chars print on consoles
+# whose default codec (e.g. Windows cp950) can't encode them.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8')
+    except (AttributeError, ValueError):
+        pass
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import yfinance as yf
@@ -44,6 +52,12 @@ OVEREXTENSION_PCT = 20.0
 
 CONVICTION_SIZE = 35.0
 MOMENTUM_EXIT_3D = -2.0
+
+# V5: HARD DRAWDOWN STOPS (from peak) — critical for margin positions
+LEVERAGED_HARD_STOP_PCT = 25.0   # 3x ETFs: SELL if down 25% from peak (no margin tightening)
+STOCK_HARD_STOP_PCT = 15.0       # Regular stocks: SELL if down 15% from peak
+MARGIN_TIGHTEN_FACTOR = 0.80     # Margin positions: tighten stops by 20% (stocks only)
+MARGIN_MODE = True                # Set True when using margin — tighter stops for stocks
 
 # V2 ENHANCEMENTS
 MIN_PRICE = 5.0
@@ -731,11 +745,20 @@ def score_ticker(ticker, close_df, vol_df, open_df, high_df, low_df):
     peak_window = min(len(prices), 126)
     peak = float(prices.tail(peak_window).max())
     drawdown_pct = round((price - peak) / peak * 100, 2) if peak > 0 else 0
-    
+
     stop_distance = atr_14 * 2.5
     dynamic_stop_pct = round(((stop_distance) / peak * 100), 2) if peak > 0 else 15.0
-    
-    stop_triggered = drawdown_pct <= -dynamic_stop_pct
+
+    # V5: Hard drawdown stop — absolute max loss from peak
+    is_lev = is_leveraged(ticker)
+    hard_stop = LEVERAGED_HARD_STOP_PCT if is_lev else STOCK_HARD_STOP_PCT
+    if MARGIN_MODE and not is_lev:
+        hard_stop *= MARGIN_TIGHTEN_FACTOR  # Tighter stops on margin (stocks only)
+
+    # Trigger stop if EITHER ATR-based or hard drawdown is hit
+    atr_stop_triggered = drawdown_pct <= -dynamic_stop_pct
+    hard_stop_triggered = drawdown_pct <= -hard_stop
+    stop_triggered = atr_stop_triggered or hard_stop_triggered
 
     rate3 = (p3 / 3) if p3 > 0 else 0
     rate5 = (p5 / 5) if p5 > 0 else 0
@@ -778,6 +801,8 @@ def score_ticker(ticker, close_df, vol_df, open_df, high_df, low_df):
         'Overextended': overextended,
         'Drawdown %': drawdown_pct,
         'Stop Triggered': stop_triggered,
+        'Hard Stop Triggered': hard_stop_triggered,
+        'Hard Stop %': hard_stop,
         'Stop Threshold': dynamic_stop_pct,
         'Vol Surge': vol_surge,
         'Acceleration': acceleration,
@@ -868,6 +893,19 @@ def calc_composite(r, bench, regime_level=4):
     if r.get('Stop Triggered'):
         abs_mom *= 0.15
 
+    # V5: Progressive drawdown penalty — score drops as you approach hard stop
+    drawdown = abs(r.get('Drawdown %', 0) or 0)
+    hard_stop = r.get('Hard Stop %', 25) or 25
+    if drawdown > 0 and hard_stop > 0:
+        # At 50% of hard stop: slight penalty. At 75%: heavy penalty. At 100%: destroyed.
+        dd_ratio = drawdown / hard_stop
+        if dd_ratio >= 0.75:
+            abs_mom *= 0.30  # Near stop — almost certainly SELL
+        elif dd_ratio >= 0.50:
+            abs_mom *= 0.55  # Getting dangerous
+        elif dd_ratio >= 0.25:
+            abs_mom *= 0.80  # Caution zone
+
     # V2: Volatility-normalized score (ATR penalty for high-vol names)
     if atr_pct > 0:
         atr_factor = min(2.0, max(0.5, atr_pct / 5.0))
@@ -898,11 +936,18 @@ def _signal(r, freq, rank, total, regime_level=4):
     brk = r.get('Breakout', False)
     p3 = r.get('3D %', 0)
     atr_pct = r.get('ATR %', 0)
+
+    # V5: HARD STOP OVERRIDE — force SELL regardless of other signals
+    if r.get('Hard Stop Triggered', False):
+        return 'SELL'
+    if r.get('Stop Triggered', False):
+        return 'SELL'
+
     if score <= 0:
         return 'SELL'
     top_half = rank <= max(total // 2, 1)
     has_momentum = vs > 1.3 or acc
-    is_conviction = (score > 150 and freq >= 6 and atr_pct < 8.0 and 
+    is_conviction = (score > 150 and freq >= 6 and atr_pct < 8.0 and
                  not r.get('Overextended', False))
     is_speculative = (score > 80 and freq >= 4 and acc)
     if is_conviction:
@@ -1418,11 +1463,12 @@ document.addEventListener('DOMContentLoaded',function(){
 <button class="copy-btn" onclick="copyWatchlist()">📋 Copy Watchlist</button>
 <div class="metrics">
 <div class="m"><div class="ml">Regime Score</div><div class="mv">{regime['score']}/100</div></div>
-<div class="m"><div class="ml">Allocation</div><div class="mv">{int(alloc * 100)}%</div><div class="ms">{'OVERWEIGHT' if alloc >= 1.2 else ('UNDERWEIGHT' if alloc <= 0.8 else 'NEUTRAL')}</div></div>
+<div class="m"><div class="ml">Allocation</div><div class="mv">{alloc}%</div><div class="ms">{'OVERWEIGHT' if c.get('regime_mult', 1.0) > 1.0 else ('UNDERWEIGHT' if c.get('regime_mult', 1.0) < 1.0 else 'NEUTRAL')}</div></div>
 <div class="m"><div class="ml">Breadth Eq-W vs SPY</div><div class="mv">{regime['components'].get('rsp_vs_spy', 'N/A')}%</div></div>
 <div class="m"><div class="ml">VIX</div><div class="mv">{regime['components'].get('vix', 'N/A')}</div></div>
 <div class="m"><div class="ml">SPY vs 200MA</div><div class="mv">${spy_p}</div><div class="ms">{'ABOVE' if spy_above else 'BELOW'} ${spy_ma}</div></div>
-<div class="m"><div class="ml">Stops</div><div class="mv">15%/25%</div><div class="ms">Stock / Leveraged</div></div>
+<div class="m"><div class="ml">Margin Mode</div><div class="mv" style="color:{'#f85149' if MARGIN_MODE else '#3fb950'}">{'⚠️ ON' if MARGIN_MODE else 'OFF'}</div><div class="ms">{'Stops tightened 20%' if MARGIN_MODE else 'Normal stops'}</div></div>
+<div class="m"><div class="ml">Hard Stops</div><div class="mv">{LEVERAGED_HARD_STOP_PCT:.0f}%/{STOCK_HARD_STOP_PCT * (MARGIN_TIGHTEN_FACTOR if MARGIN_MODE else 1):.0f}%</div><div class="ms">Leveraged / Stock (from peak)</div></div>
 </div>"""
 
     def table(results, title, exclude_cols=None):
@@ -1505,11 +1551,17 @@ document.addEventListener('DOMContentLoaded',function(){
             sq_score = r.get('Squeeze Score') or 0
             days_cover = r.get('Days to Cover') or 0
             tv_rsi_val = tv_rsi if tv_rsi else 0
-            
+            drawdown = r.get('Drawdown %', 0) or 0
+            hard_stop_pct = r.get('Hard Stop %', 25) or 25
+            hard_stop_hit = r.get('Hard Stop Triggered', False)
+
             details = f"""
             <tr class="details-row" style="display:none">
                 <td colspan="{ncols}">
                     <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">Drawdown from Peak</div><div class="detail-value {'sell' if hard_stop_hit else ('warning' if drawdown < -10 else '')}">{drawdown:.1f}%</div></div>
+                        <div class="detail-item"><div class="detail-label">Hard Stop</div><div class="detail-value {'sell' if hard_stop_hit else ''}">{'-' if hard_stop_hit else ''}{hard_stop_pct:.0f}% {'⚠️ TRIGGERED' if hard_stop_hit else ''}</div></div>
+                        <div class="detail-item"><div class="detail-label">Margin Mode</div><div class="detail-value {'warning' if MARGIN_MODE else ''}">{'ON ⚠️' if MARGIN_MODE else 'OFF'}</div></div>
                         <div class="detail-item"><div class="detail-label">Short Int.</div><div class="detail-value {si_cls}">{short_pct:.1f}%</div></div>
                         <div class="detail-item"><div class="detail-label">Days to Cover</div><div class="detail-value">{days_cover:.1f}</div></div>
                         <div class="detail-item"><div class="detail-label">Squeeze Score</div><div class="detail-value {'warning' if sq_score > 5 else ''}">{sq_score:.1f}</div></div>
@@ -1594,6 +1646,9 @@ def print_regime(regime):
     print(f"\n{SEP2}")
     print(f"  MARKET REGIME: {regime['label']}  "
           f"(Score: {regime['score']}/100)")
+    if MARGIN_MODE:
+        print(f"  ⚠️  MARGIN MODE ACTIVE — Stocks tightened by {int((1-MARGIN_TIGHTEN_FACTOR)*100)}% (leveraged ETFs: no tightening)")
+        print(f"  ⚠️  Leveraged ETF stop: {LEVERAGED_HARD_STOP_PCT:.0f}% | Stock stop: {STOCK_HARD_STOP_PCT * MARGIN_TIGHTEN_FACTOR:.0f}%")
     print(f"{SEP2}")
 
     c = regime['components']
@@ -1640,7 +1695,8 @@ def print_table(title, results, bench_ticker, bench, all_freqs, regime_level=4, 
 
 def print_portfolio_v3(picks, is_bear, all_freqs):
     print(f"\n{SEP2}")
-    print(f"  PORTFOLIO V2 (ATR Sizing + Partial Profit-Taking) -- {'BEAR MODE' if is_bear else 'BULL MODE'}")
+    margin_warn = " ⚠️ MARGIN MODE" if MARGIN_MODE else ""
+    print(f"  PORTFOLIO V2 (ATR Sizing + Partial Profit-Taking) -- {'BEAR MODE' if is_bear else 'BULL MODE'}{margin_warn}")
     print(f"{SEP2}")
 
     if not picks:
@@ -1652,22 +1708,30 @@ def print_portfolio_v3(picks, is_bear, all_freqs):
         price = r['Price']
         atr = r['ATR']
         is_lev = r.get('Leveraged', False)
-        
+
+        # V5: Hard drawdown stop (absolute limit from peak)
+        hard_stop = r.get('Hard Stop %', LEVERAGED_HARD_STOP_PCT if is_lev else STOCK_HARD_STOP_PCT)
+        drawdown = r.get('Drawdown %', 0) or 0
+
         # V2: ATR-based stop - tighter for leveraged ETFs
         atr_mult = 1.5 if is_lev else 2.0
         stop_pct = round((atr * atr_mult / price) * 100, 2) if price > 0 else 20.0
         stop_price = round(price * (1 - stop_pct / 100), 2)
-        
+
+        # V5: Hard stop price from current peak
+        peak_window = 126
+        hard_stop_price = round(price / (1 + drawdown/100) * (1 - hard_stop/100), 2) if drawdown != 0 else round(price * (1 - hard_stop/100), 2)
+
         # V2: Partial profit-taking targets (ATR multiples from entry)
         target_1 = round(price * (1 + 3 * atr_mult * atr / price), 2)
         target_2 = round(price * (1 + 5 * atr_mult * atr / price), 2)
         target_3 = round(price * (1 + 8 * atr_mult * atr / price), 2)
-        
+
         p3 = r.get('3D %', 0)
         p5 = r.get('5D %', 0)
         score = r.get('Score', 0)
         freq = all_freqs.get(r['Ticker'], 0)
-        
+
         # V2: Tier display
         if score > 150 and freq >= 6:
             tier = "CONVICTION"
@@ -1675,25 +1739,30 @@ def print_portfolio_v3(picks, is_bear, all_freqs):
             tier = "SPECULATIVE"
         else:
             tier = "STANDARD"
-        
+
         tag = " *** TOP CONVICTION" if i == 1 else ""
         print(f"\n  #{i}  {r['Ticker']}{tag}")
         print(f"      Price: ${price:.2f}  |  Score: {score:.1f}  |  Tier: {tier}")
-        print(f"      ATR: ${atr:.2f} ({atr_pct:.1f}%)  |  Stop: ${stop_price:.2f} (-{stop_pct:.2f}%)")
+        print(f"      Drawdown: {drawdown:.1f}% from peak  |  Hard Stop: -{hard_stop:.0f}% (${hard_stop_price:.2f})")
+        if r.get('Hard Stop Triggered'):
+            print(f"      >>> ⚠️  HARD STOP TRIGGERED — SELL IMMEDIATELY <<<")
+        if MARGIN_MODE:
+            print(f"      ⚠️ MARGIN: Extra risk! Stop tightened to {hard_stop:.0f}%")
+        print(f"      ATR: ${atr:.2f} ({atr_pct:.1f}%)  |  ATR Stop: ${stop_price:.2f} (-{stop_pct:.2f}%)")
         print(f"      Targets: T1 ${target_1:.2f} | T2 ${target_2:.2f} | T3 ${target_3:.2f}")
-        
+
         # V2: Partial exit plan
         print(f"      Exit Plan: Take 1/3 at T1, 1/3 at T2, hold 1/3 with trailing stop")
-        
+
         # V4: Trailing Stop indicator - shows breakeven after T1
         breakeven_stop = round(price * 1.002, 2)
         print(f"      Trailing Stop: After T1 hit → move stop to ${breakeven_stop} (breakeven)")
-        
+
         if p3 > 5.0:
             print(f"      >>> PYRAMID OPPORTUNITY: +{p3:.1f}% in 3D. Consider adding 10% size.")
         if p3 < -2.0:
             print(f"      !! MOMENTUM EXIT TRIGGERED: 3D = {p3:.1f}% - Consider scaling out")
-        
+
         # V4: Short squeeze and pullback indicators
         if r.get('Squeeze Score', 0) > SQUEEZE_BONUS:
             print(f"      >>> SHORT SQUEEZE CANDIDATE: {r['Short Interest']*100:.1f}% short, {r['Days To Cover']:.1f} days to cover")
