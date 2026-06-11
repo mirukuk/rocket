@@ -539,9 +539,23 @@ def get_short_squeeze_data(ticker):
         return {'short_pct': 0, 'days_to_cover': 0, 'short_ratio': 0, 'squeeze_score': 0}
 
 
+def _history(ticker, period):
+    """Fetch daily history and drop rows with a NaN Close.
+
+    yfinance often appends a placeholder row for the current (unfinished)
+    session whose Close is NaN. Left in place that NaN propagates through
+    every `.iloc[-1]` / rolling-mean call and silently corrupts the regime
+    score and benchmarks, so we strip incomplete rows up front.
+    """
+    h = yf.Ticker(ticker).history(period=period)
+    if not h.empty and 'Close' in h.columns:
+        h = h[h['Close'].notna()]
+    return h
+
+
 def bench_perf(ticker):
     try:
-        h = yf.Ticker(ticker).history(period="3mo")
+        h = _history(ticker, "3mo")
         if len(h) >= 2:
             latest_close = float(h['Close'].iloc[-1])
             prev_close = float(h['Close'].iloc[-2])
@@ -573,7 +587,7 @@ def get_regime():
 
     spy_hist = None
     try:
-        spy_hist = yf.Ticker('SPY').history(period="2y")
+        spy_hist = _history('SPY', "2y")
         if len(spy_hist) >= 200:
             spy_price = float(spy_hist['Close'].iloc[-1])
             ma200 = float(spy_hist['Close'].rolling(200).mean().iloc[-1])
@@ -592,7 +606,7 @@ def get_regime():
         pass
 
     try:
-        rsp_hist = yf.Ticker('RSP').history(period="3mo")
+        rsp_hist = _history('RSP', "3mo")
         if len(rsp_hist) > 20 and spy_hist is not None and len(spy_hist) > 20:
              rsp_perf = pct(rsp_hist['Close'], 20)
              spy_perf = pct(spy_hist['Close'], 20)
@@ -606,7 +620,7 @@ def get_regime():
         print(f"Error calculating breadth: {e}")
 
     try:
-        vix_hist = yf.Ticker('^VIX').history(period="5d")
+        vix_hist = _history('^VIX', "5d")
         vix = round(float(vix_hist['Close'].iloc[-1]), 2)
         components['vix'] = vix
         vix_level = ("LOW" if vix < 15 else "NORMAL" if vix < 20 else
@@ -637,28 +651,51 @@ def get_regime():
         pass
 
     try:
+        # CNN now rejects bare User-Agent requests with HTTP 418 ("I'm a
+        # teapot. You're a bot."). A full browser header set with the
+        # edition.cnn.com Origin/Referer and sec-ch-ua hints gets a 200.
         r = requests.get(
             'https://production.dataviz.cnn.io/index/fearandgreed/graphdata',
-            headers={'User-Agent': 'Mozilla/5.0', 'Accept': '*/*',
-                     'Origin': 'https://www.cnn.com',
-                     'Referer': 'https://www.cnn.com/'},
+            headers={
+                'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                               'AppleWebKit/537.36 (KHTML, like Gecko) '
+                               'Chrome/124.0.0.0 Safari/537.36'),
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Origin': 'https://edition.cnn.com',
+                'Referer': 'https://edition.cnn.com/',
+                'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-site',
+            },
             timeout=15)
-        fng = int(r.json()['fear_and_greed']['score'])
-        fng_label = ("EXTREME FEAR" if fng <= 20 else "FEAR" if fng <= 40 else
-                     "NEUTRAL" if fng <= 60 else "GREED" if fng <= 80 else "EXTREME GREED")
+        r.raise_for_status()
+        fng = int(round(float(r.json()['fear_and_greed']['score'])))
+        fng_label = ("EXTREME FEAR" if fng <= 25 else "FEAR" if fng <= 45 else
+                     "NEUTRAL" if fng <= 55 else "GREED" if fng <= 75 else "EXTREME GREED")
         components['fng'] = fng
         components['fng_label'] = fng_label
-        if fng > 60:
+        # Heavily weighted two-sided sentiment. Fear is the dominant override:
+        # extreme fear alone (-45) can knock the regime down ~1.5 tiers even
+        # with a healthy trend, forcing a defensive posture.
+        if fng > 75:        # EXTREME GREED
+            regime_score += 25
+        elif fng > 55:      # GREED
             regime_score += 15
-        elif fng > 40:
-            regime_score += 10
-        elif fng > 25:
-            regime_score += 5
+        elif fng > 45:      # NEUTRAL
+            regime_score += 0
+        elif fng > 25:      # FEAR
+            regime_score -= 25
+        else:               # EXTREME FEAR
+            regime_score -= 45
     except Exception:
         pass
 
     try:
-        h = yf.Ticker('SMH').history(period="6mo")
+        h = _history('SMH', "6mo")
         if len(h) >= 50:
             cur = float(h['Close'].iloc[-1])
             high50 = float(h['Close'].iloc[-50:].max())
@@ -1321,6 +1358,7 @@ h2 { font-size:1.1rem; margin:1.5rem 0 .5rem; color:#8b949e; border-bottom:1px s
 .sig { font-size:2.5rem; font-weight:bold; margin:1rem 0; padding:1rem 2rem; border-radius:.5rem; display:inline-block; }
 .sig.buy { background:#238636; color:#fff; }
 .sig.sell { background:#da3633; color:#fff; }
+.sig.cautious { background:#9e6a03; color:#fff; }
 .metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1rem; margin-bottom:2rem; }
 .m { background:#161b22; padding:1rem; border-radius:.5rem; }
 .ml { color:#8b949e; font-size:.75rem; margin-bottom:.25rem; }
@@ -1335,9 +1373,6 @@ td { font-size:.85rem; } tr:hover { background:#161b22; }
 .tv-sell { background:#4d1a1a; color:#f87171; }
 .tv-neutral { background:#3d3d1a; color:#facc15; }
 .tv-header { font-size:0.65rem; line-height:1.2; }
-.optional-col { display:none; }
-.toggle-btn { background:#30363d; color:#c9d1d9; border:1px solid #484f58; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:0.75rem; margin-bottom:8px; }
-.toggle-btn:hover { background:#484f58; }
 .copy-btn { background:#238636; color:#fff; border:1px solid #2ea043; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:600; margin:0 0 8px 8px; }
 .copy-btn:hover { background:#2ea043; }
 .copy-btn:active { background:#1f6f2e; }
@@ -1402,7 +1437,18 @@ def generate_html_v3(regime, sections, mode, all_freqs):
     spy_p = c.get('spy_price', 'N/A')
     spy_ma = c.get('spy_ma200', 'N/A')
     spy_above = c.get('spy_above_200', False)
-    
+
+    # CNN Fear & Greed tile — color by sentiment (red=fear, green=greed)
+    fng = c.get('fng')
+    fng_label = c.get('fng_label', 'N/A')
+    if fng is None:
+        fng_disp, fng_color = 'N/A', '#8b949e'
+    else:
+        fng_disp = fng
+        fng_color = ('#f85149' if fng <= 25 else '#f0883e' if fng <= 45
+                     else '#d29922' if fng <= 55 else '#3fb950' if fng <= 75
+                     else '#00ff7f')
+
     # JavaScript for expandable rows - stored outside f-string to avoid parsing issues
     toggle_js = """
 <script>
@@ -1459,13 +1505,13 @@ document.addEventListener('DOMContentLoaded',function(){
 <body><div class="c">
 <h1>V4 Master Router ({mode})</h1><p class="date">{now}</p>
 <div class="sig {regime_cls}">{regime['label']}</div>
-<button class="toggle-btn" onclick="document.querySelectorAll('.optional-col').forEach(el=>el.style.display=el.style.display==='none'?'table-cell':'none');this.textContent=this.textContent==='Show Details'?'Hide Details':'Show Details'">Show Details</button>
 <button class="copy-btn" onclick="copyWatchlist()">📋 Copy Watchlist</button>
 <div class="metrics">
 <div class="m"><div class="ml">Regime Score</div><div class="mv">{regime['score']}/100</div></div>
 <div class="m"><div class="ml">Allocation</div><div class="mv">{alloc}%</div><div class="ms">{'OVERWEIGHT' if c.get('regime_mult', 1.0) > 1.0 else ('UNDERWEIGHT' if c.get('regime_mult', 1.0) < 1.0 else 'NEUTRAL')}</div></div>
 <div class="m"><div class="ml">Breadth Eq-W vs SPY</div><div class="mv">{regime['components'].get('rsp_vs_spy', 'N/A')}%</div></div>
 <div class="m"><div class="ml">VIX</div><div class="mv">{regime['components'].get('vix', 'N/A')}</div></div>
+<div class="m"><div class="ml">Fear &amp; Greed</div><div class="mv" style="color:{fng_color}">{fng_disp}</div><div class="ms">{fng_label}</div></div>
 <div class="m"><div class="ml">SPY vs 200MA</div><div class="mv">${spy_p}</div><div class="ms">{'ABOVE' if spy_above else 'BELOW'} ${spy_ma}</div></div>
 <div class="m"><div class="ml">Margin Mode</div><div class="mv" style="color:{'#f85149' if MARGIN_MODE else '#3fb950'}">{'⚠️ ON' if MARGIN_MODE else 'OFF'}</div><div class="ms">{'Stops tightened 20%' if MARGIN_MODE else 'Normal stops'}</div></div>
 <div class="m"><div class="ml">Hard Stops</div><div class="mv">{LEVERAGED_HARD_STOP_PCT:.0f}%/{STOCK_HARD_STOP_PCT * (MARGIN_TIGHTEN_FACTOR if MARGIN_MODE else 1):.0f}%</div><div class="ms">Leveraged / Stock (from peak)</div></div>
@@ -1488,15 +1534,14 @@ document.addEventListener('DOMContentLoaded',function(){
 
         # Number of visible columns in this table — used for the details-row
         # colspan so the expanded panel spans the full width.
+        # Main columns: #, Ticker, [Today, [15D]], $Vol, Score, Signal, BUY TODAY.
+        # ATR% and Freq now live inside the click-to-expand details panel.
         ncols = 2  # '#', 'Ticker'
         if 'Today' not in exclude_cols:
             ncols += 1
             if '15D' not in exclude_cols:
                 ncols += 1
         ncols += 2  # '$Vol', 'Score'
-        if 'ATR%' not in exclude_cols:
-            ncols += 1
-        ncols += 1  # 'Freq'
         ncols += 1  # 'Signal'
         ncols += 1  # 'BUY TODAY'
 
@@ -1512,11 +1557,8 @@ document.addEventListener('DOMContentLoaded',function(){
                 cols += f"<td>{fmt_pct(r.get('Today %'))}</td>"
                 if '15D' not in exclude_cols:
                     cols += f"<td>{fmt_pct(r.get('15D %'))}</td>"
-            cols += f"<td>{fmt_dollar_volume(r.get('Dollar Volume'))}</td><td class='optional-col'>{r.get('Score', 0):.0f}</td>"
-            if 'ATR%' not in exclude_cols:
-                cols += f"<td class='optional-col'>{r.get('ATR %', 0):.1f}%</td>"
-            cols += f"<td class='optional-col'>{freq}/{MAX_HISTORY}</td>"
-            
+            cols += f"<td>{fmt_dollar_volume(r.get('Dollar Volume'))}</td><td>{r.get('Score', 0):.0f}</td>"
+
             # Own Technical Analysis (script)
             cols += f"<td>{_sig_html(s)}</td>"
             
@@ -1554,11 +1596,14 @@ document.addEventListener('DOMContentLoaded',function(){
             drawdown = r.get('Drawdown %', 0) or 0
             hard_stop_pct = r.get('Hard Stop %', 25) or 25
             hard_stop_hit = r.get('Hard Stop Triggered', False)
+            atr_pct_val = r.get('ATR %', 0) or 0
 
             details = f"""
             <tr class="details-row" style="display:none">
                 <td colspan="{ncols}">
                     <div class="detail-grid">
+                        <div class="detail-item"><div class="detail-label">ATR %</div><div class="detail-value {'warning' if atr_pct_val > 8 else ''}">{atr_pct_val:.1f}%</div></div>
+                        <div class="detail-item"><div class="detail-label">Freq</div><div class="detail-value">{freq}/{MAX_HISTORY}</div></div>
                         <div class="detail-item"><div class="detail-label">Drawdown from Peak</div><div class="detail-value {'sell' if hard_stop_hit else ('warning' if drawdown < -10 else '')}">{drawdown:.1f}%</div></div>
                         <div class="detail-item"><div class="detail-label">Hard Stop</div><div class="detail-value {'sell' if hard_stop_hit else ''}">{'-' if hard_stop_hit else ''}{hard_stop_pct:.0f}% {'⚠️ TRIGGERED' if hard_stop_hit else ''}</div></div>
                         <div class="detail-item"><div class="detail-label">Margin Mode</div><div class="detail-value {'warning' if MARGIN_MODE else ''}">{'ON ⚠️' if MARGIN_MODE else 'OFF'}</div></div>
@@ -1586,10 +1631,7 @@ document.addEventListener('DOMContentLoaded',function(){
             header += "<th>Today</th>"
             if '15D' not in exclude_cols:
                 header += "<th>15D</th>"
-        header += "<th>$Vol</th><th class='optional-col'>Score</th>"
-        if 'ATR%' not in exclude_cols:
-            header += "<th class='optional-col'>ATR%</th>"
-        header += "<th class='optional-col'>Freq</th>"
+        header += "<th>$Vol</th><th>Score</th>"
         header += "<th class='tv-header'>Signal</th>"
         header += "<th class='tv-header'>BUY<br>TODAY</th>"
         
@@ -1660,6 +1702,8 @@ def print_regime(regime):
         print(f"  Breadth (RSP vs SPY): {c['rsp_vs_spy']:+.2f}%")
     if 'vix' in c:
         print(f"  VIX: {c['vix']} ({c.get('vix_level', '')})")
+    if 'fng' in c:
+        print(f"  Fear & Greed: {c['fng']} ({c.get('fng_label', '')})")
     # V4: Display volatility-adjusted allocation multiplier
     if 'regime_mult' in c:
         mult_pct = int(c['regime_mult'] * 100)
