@@ -12,7 +12,7 @@ Usage:
   python run.py
 """
 
-import sys, os, json, re, argparse
+import sys, os, json, re, argparse, time
 from datetime import datetime
 from collections import Counter
 
@@ -61,7 +61,9 @@ MARGIN_MODE = True                # Set True when using margin — tighter stops
 
 # V2 ENHANCEMENTS
 MIN_PRICE = 5.0
-MAX_ATR_PCT_STOCK = 10.0
+MAX_ATR_PCT_STOCK = 20.0  # Raised from 10 to admit SIVEF-class explosive movers
+                          # (high-ATR small caps that outrun SOXL). Risk is
+                          # managed by the hard-stop / drawdown logic downstream.
 SCORE_CEILING = 300
 SCORE_FLOOR = -200
 MIN_FREQ_FOR_BONUS = 4
@@ -76,7 +78,7 @@ SQUEEZE_BONUS = 30  # Score bonus for squeeze candidates
 SECTOR_ETFS = ['XLK', 'XLE', 'XLV', 'XLY', 'XLF', 'XLRE']
 
 # Always-visible watchlist tickers
-WATCHLIST_TICKERS = ['SOXL', 'DRAM', 'KORU', 'TECL','SOXX','EWT']
+WATCHLIST_TICKERS = ['SOXL', 'DRAM', 'KORU', 'TECL','SOXX','EWT','SIVEF']
 
 
 def get_sector_rotation():
@@ -127,6 +129,9 @@ ETF_URL = "https://finviz.com/screener.ashx?v=411&f=ind_exchangetradedfund%2Csh_
 STOCK_URL = "https://finviz.com/screener.ashx?v=152&f=sh_price_o10,ta_change_u,ta_perf_13w50o&ft=4&o=-perf13w"
 STOCK_URL2 = "https://finviz.com/screener.ashx?v=152&f=sh_avgvol_o200,sh_price_o10,ta_change_u&ft=4&o=-volume"
 STOCK_URL3 = "https://finviz.com/screener.ashx?v=152&f=sh_price_o10,ta_change_u,ta_perf_1w10o&ft=4&o=-perf1w"
+# High-momentum scan: big 4-week movers (catches SIVEF-class explosive runs
+# earlier than the 13-week screens). Sorted by 4-week performance.
+STOCK_URL4 = "https://finviz.com/screener.ashx?v=152&f=sh_price_o5,sh_avgvol_o100,ta_perf_4w30o&ft=4&o=-perf4w"
 
 SEP = "-" * 72
 SEP2 = "=" * 72
@@ -156,20 +161,47 @@ def is_leveraged(ticker):
     return ticker in LEVERAGED_TICKERS
 
 
-def fetch_finviz(url, limit=200):
-    try:
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
-        r.raise_for_status()
-        seen = set()
-        # Finviz ticker links now use the form `stock?t=TICKER` (older pages used
-        # `quote?t=TICKER`). Match both so the screener keeps working across
-        # Finviz HTML changes. Allow '.'/'-' for tickers like BRK.B / BF-B.
+def fetch_finviz(url, limit=200, pages=5):
+    """Scrape tickers from a Finviz screener URL, following pagination.
+
+    Finviz returns only 20 rows per page. Because our screener URLs sort by
+    performance (`o=-perf13w` etc.), the most explosive movers are pushed onto
+    later pages — so reading only page 1 (the old behaviour) missed names like
+    SIVEF entirely. We walk pages via the `&r=` offset (1, 21, 41, ...) until we
+    hit `limit` unique tickers or a page returns nothing new.
+
+    Finviz rate-limits aggressively (HTTP 429), so we cap pages and pause
+    between requests. On a 429 we stop and return whatever we have rather than
+    retry-hammering.
+    """
+    seen = set()
+    out = []
+    for i in range(pages):
+        r_off = 1 + i * 20
+        sep = '&' if '?' in url else '?'
+        page_url = f"{url}{sep}r={r_off}"
+        try:
+            r = requests.get(page_url, headers={'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/124.0.0.0 Safari/537.36')}, timeout=15)
+            r.raise_for_status()
+        except Exception as e:
+            # 429 or transient error — keep whatever we already collected.
+            if i == 0:
+                print(f"   Finviz error: {e}")
+            break
+        # Finviz ticker links use `stock?t=TICKER` (older pages used
+        # `quote?t=TICKER`). Match both. Allow '.'/'-' for BRK.B / BF-B.
         tickers = re.findall(r"(?:stock|quote)\?t=([A-Z][A-Z.\-]*)", r.text)
-        return [t for t in tickers
-                if not (t in seen or seen.add(t))][:limit]
-    except Exception as e:
-        print(f"   Finviz error: {e}")
-        return []
+        new = [t for t in tickers if not (t in seen or seen.add(t))]
+        if not new:
+            break  # no fresh tickers — past the last result page
+        out.extend(new)
+        if len(out) >= limit:
+            break
+        time.sleep(1.2)  # be polite — Finviz returns 429 if we hammer it
+    return out[:limit]
 
 
 def bulk_download(tickers, period="1y"):
@@ -1301,7 +1333,19 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
         sys.stdout.write(f"\r   Short interest data fetched." + " " * 20 + "\n")
         sys.stdout.flush()
 
-    results.sort(key=lambda x: x.get('Dollar Volume', 0), reverse=True)
+    # Rank by momentum so explosive movers (SIVEF-class) survive truncation.
+    # min_dv already gated out illiquid names, so we no longer need dollar
+    # volume as the primary sort — a strong mover with moderate volume was
+    # previously cut before the top_n slice ever saw it. Blend short- and
+    # mid-term performance; the watchlist keeps its volume ordering.
+    if 'WATCHLIST' in name:
+        results.sort(key=lambda x: x.get('Dollar Volume', 0), reverse=True)
+    else:
+        def _momentum_rank(x):
+            return ((x.get('5D %') or 0) * 1.5
+                    + (x.get('15D %') or 0)
+                    + (x.get('3D %') or 0) * 1.0)
+        results.sort(key=_momentum_rank, reverse=True)
     return results[:top_n], bench
 
 
@@ -1835,7 +1879,7 @@ def main():
     print("\n>>> RUNNING BULL SCREENERS <<<")
     stocks, stock_bench = run_screener(
         "STOCK SCREENER",
-        [STOCK_URL, STOCK_URL2, STOCK_URL3],
+        [STOCK_URL, STOCK_URL2, STOCK_URL3, STOCK_URL4],
         bench_ticker="SOXL", ensure_ticker='SOXL',
         min_dv=30e6, dl_limit=200,
     )
