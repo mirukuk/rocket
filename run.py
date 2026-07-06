@@ -74,11 +74,18 @@ PULLBACK_RSI_MAX = 50  # Max RSI for pullback entry
 SQUEEZE_SHORT_MIN = 0.15  # Min 15% short interest for squeeze candidate
 SQUEEZE_BONUS = 30  # Score bonus for squeeze candidates
 
+# SIGNAL = TradingView Summary rating.
+# The tool's "Signal" column is now driven directly by TradingView's Technical
+# Ratings summary (the mean of the Oscillator and Moving-Average ratings),
+# reported as Strong Buy / Buy / Neutral / Sell / Strong Sell — no stateful
+# swing memory, no hand-tuned entry bars. The rating is fully determined by the
+# current bar's technicals, exactly like the TradingView screener.
+
 # Sector ETFs for rotation
 SECTOR_ETFS = ['XLK', 'XLE', 'XLV', 'XLY', 'XLF', 'XLRE']
 
 # Always-visible watchlist tickers
-WATCHLIST_TICKERS = ['SOXL', 'DRAM', 'KORU', 'TECL','SOXX','EWT','SIVEF']
+WATCHLIST_TICKERS = ['SOXL', 'DRAM','SOXX','LABU']
 
 
 def get_sector_rotation():
@@ -231,303 +238,394 @@ def bulk_download(tickers, period="1y"):
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 
-# TradingView Technical Analysis API - fallback using yfinance computed values
-TV_API_URL = "https://scanner.tradingview.com/america/scan"
+# === TradingView Technical Ratings — official methodology ==================
+# Reference: TradingView Help Center 43000614331 / 43000475547.
+# Each constituent indicator votes -1 (Sell), 0 (Neutral), or +1 (Buy).
+#   Os Rating   = mean of the 11 oscillator votes
+#   MA Rating   = mean of the 15 moving-average votes
+#   Tech Rating = mean of (Os Rating, MA Rating)
+# The resulting score in [-1, +1] maps to a five-state label:
+RATING_STRONG_BUY = 'STRONG_BUY'
+RATING_BUY = 'BUY'
+RATING_NEUTRAL = 'NEUTRAL'
+RATING_SELL = 'SELL'
+RATING_STRONG_SELL = 'STRONG_SELL'
 
-def compute_tv_technicals_from_data(ticker, close_df, high_df, low_df, open_df):
+# Human-readable labels matching the TradingView UI ("Strong Buy", etc.).
+RATING_LABELS = {
+    RATING_STRONG_BUY: 'Strong Buy',
+    RATING_BUY: 'Buy',
+    RATING_NEUTRAL: 'Neutral',
+    RATING_SELL: 'Sell',
+    RATING_STRONG_SELL: 'Strong Sell',
+}
+
+# The Signal column uses the same five states, spelled with a space (the form
+# the table/portfolio code and CSS color map expect).
+RATING_TO_SIGNAL = {
+    RATING_STRONG_BUY: 'STRONG BUY',
+    RATING_BUY: 'BUY',
+    RATING_NEUTRAL: 'NEUTRAL',
+    RATING_SELL: 'SELL',
+    RATING_STRONG_SELL: 'STRONG SELL',
+}
+
+
+def _rating_from_score(score):
+    """Map a mean rating in [-1, 1] to TradingView's five-state label.
+
+    Thresholds are exactly those published by TradingView:
+        > 0.5            Strong Buy
+        (0.1, 0.5]       Buy
+        [-0.1, 0.1]      Neutral
+        [-0.5, -0.1)     Sell
+        < -0.5           Strong Sell
     """
-    Compute TradingView-style technical analysis from yfinance data.
-    Returns dict with oscillators, moving_averages, rsi, macd signals.
+    if score > 0.5:
+        return RATING_STRONG_BUY
+    if score > 0.1:
+        return RATING_BUY
+    if score >= -0.1:
+        return RATING_NEUTRAL
+    if score >= -0.5:
+        return RATING_SELL
+    return RATING_STRONG_SELL
+
+
+def _simple_signal(rating):
+    """Collapse a five-state rating to BUY / SELL / NEUTRAL (for BUY-bias use)."""
+    if rating in (RATING_STRONG_BUY, RATING_BUY):
+        return 'BUY'
+    if rating in (RATING_STRONG_SELL, RATING_SELL):
+        return 'SELL'
+    return 'NEUTRAL'
+
+
+def _last(series, default=None):
+    """Last finite value of a Series, or `default` if empty/NaN."""
+    if series is None or len(series) == 0:
+        return default
+    v = series.iloc[-1]
+    return default if pd.isna(v) else float(v)
+
+
+def _rma(series, length):
+    """Wilder's smoothing (RMA) — what TradingView uses for RSI / ADX."""
+    return series.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+
+
+def _wma(series, length):
+    """Weighted moving average (linear weights), as used by the Hull MA."""
+    weights = np.arange(1, length + 1)
+    return series.rolling(length).apply(
+        lambda w: np.dot(w, weights) / weights.sum(), raw=True)
+
+
+def compute_tv_technicals_from_data(ticker, close_df, high_df, low_df, open_df,
+                                    vol_df=None):
+    """Compute TradingView's Technical Ratings from OHLCV data.
+
+    Strictly follows TradingView's official methodology: 11 oscillators, 15
+    moving averages, each voting -1/0/+1, aggregated into an Oscillator rating,
+    a Moving-Average rating, and an overall (summary) rating — every one of
+    them expressed as Strong Buy / Buy / Neutral / Sell / Strong Sell.
+
+    Returns a dict carrying the three ratings, the buy/sell/neutral vote
+    counts for each group, and a per-indicator breakdown (name, value, action)
+    that mirrors the TradingView "Oscillators" / "Moving Averages" tables.
     """
     result = {
-        'oscillators': 'NEUTRAL',
-        'moving_averages': 'NEUTRAL',
-        'rsi': None,
-        'macd': None,
+        'oscillators': 'NEUTRAL',        # simple BUY/SELL/NEUTRAL (Os rating)
+        'moving_averages': 'NEUTRAL',    # simple BUY/SELL/NEUTRAL (MA rating)
+        'os_rating': RATING_NEUTRAL,
+        'ma_rating': RATING_NEUTRAL,
+        'tech_rating': RATING_NEUTRAL,
+        'os_score': 0.0, 'ma_score': 0.0, 'tech_score': 0.0,
+        'osc_buy': 0, 'osc_sell': 0, 'osc_neutral': 0,
+        'ma_buy': 0, 'ma_sell': 0, 'ma_neutral': 0,
+        'osc_details': [], 'ma_details': [],
+        'rsi': None, 'macd': None, 'entry_quality': 'MOMENTUM',
     }
-    
+
     try:
-        # Handle both multi-index (multiple tickers) and single ticker cases
-        if ticker in close_df.columns:
-            prices = close_df[ticker].dropna()
-        else:
-            # Try multi-index format
-            try:
-                prices = close_df[(slice(None), ticker)].droplevel(1)
-            except:
-                return result
-        
-        # Handle high_df
-        if ticker in high_df.columns:
-            highs = high_df[ticker].dropna()
-        else:
-            try:
-                highs = high_df[(slice(None), ticker)].droplevel(1).dropna()
-            except:
-                highs = prices  # fallback
-        
-        # Handle low_df
-        if ticker in low_df.columns:
-            lows = low_df[ticker].dropna()
-        else:
-            try:
-                lows = low_df[(slice(None), ticker)].droplevel(1).dropna()
-            except:
-                lows = prices  # fallback
-        
-        # Handle open_df
-        if ticker in open_df.columns:
-            opens = open_df[ticker].dropna()
-        else:
-            try:
-                opens = open_df[(slice(None), ticker)].droplevel(1).dropna()
-            except:
-                opens = prices  # fallback
-        
-        if len(prices) < 50:
+        prices, highs, lows, opens, vols = _extract_ohlcv(
+            ticker, close_df, high_df, low_df, open_df, vol_df)
+        if prices is None or len(prices) < 35:
             return result
-        
+
         price = float(prices.iloc[-1])
-        
-        # === RSI (14-period) ===
-        delta = prices.diff()
-        gain = delta.where(delta > 0, 0.0)
-        loss = (-delta).where(delta < 0, 0.0)
-        avg_gain = gain.rolling(14).mean()
-        avg_loss = loss.rolling(14).mean()
-        rs = avg_gain / avg_loss
-        rsi_series = 100 - (100 / (1 + rs))
-        rsi = float(rsi_series.iloc[-1])
-        if pd.isna(rsi):
-            rsi = 50.0  # Neutral default
-        result['rsi'] = round(rsi, 2)
-        
-        # === MACD (12, 26, 9) ===
-        ema12 = prices.ewm(span=12, adjust=False).mean()
-        ema26 = prices.ewm(span=26, adjust=False).mean()
-        macd_line = ema12 - ema26
-        signal_line = macd_line.ewm(span=9, adjust=False).mean()
-        macd_hist = float((macd_line - signal_line).iloc[-1])
-        if pd.isna(macd_hist):
-            macd_hist = 0.0
-        result['macd'] = round(macd_hist, 4)
-        
-        # V4: Entry Quality based on RSI
-        # Pullback = RSI < 50 (ideal entry), Breakout = RSI 50-60, Momentum = RSI > 60
-        if rsi < PULLBACK_RSI_MAX:
-            result['entry_quality'] = 'PULLBACK'
-        elif rsi < 60:
-            result['entry_quality'] = 'BREAKOUT'
-        else:
-            result['entry_quality'] = 'MOMENTUM'
-        
-        # === Stochastic (14,3) ===
-        stoch_k = 100 * (prices - lows.rolling(14).min()) / (highs.rolling(14).max() - lows.rolling(14).min() + 0.0001)
-        stoch_d = stoch_k.rolling(3).mean()
-        stoch_k_val = float(stoch_k.iloc[-1]) if not pd.isna(stoch_k.iloc[-1]) else 50.0
-        stoch_d_val = float(stoch_d.iloc[-1]) if not pd.isna(stoch_d.iloc[-1]) else 50.0
-        stoch_k_prev = float(stoch_k.iloc[-2]) if len(stoch_k) >= 2 and not pd.isna(stoch_k.iloc[-2]) else 50.0
-        stoch_d_prev = float(stoch_d.iloc[-2]) if len(stoch_d) >= 2 and not pd.isna(stoch_d.iloc[-2]) else 50.0
-        
-        # === CCI (20-period) ===
-        typical = (highs + lows + prices) / 3
-        cci_series = (typical - typical.rolling(20).mean()) / (0.015 * typical.rolling(20).std() + 0.0001)
-        cci_val = float(cci_series.iloc[-1]) if not pd.isna(cci_series.iloc[-1]) else 0.0
-        
-        # === ADX (14-period) ===
-        plus_dm = highs.diff()
-        minus_dm = -lows.diff()
-        plus_dm[plus_dm < 0] = 0
-        minus_dm[minus_dm < 0] = 0
-        tr1 = highs - lows
-        tr2 = (highs - prices.shift()).abs()
-        tr3 = (lows - prices.shift()).abs()
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr = tr.rolling(14).mean()
-        
-        plus_di = 100 * (plus_dm.rolling(14).mean() / (atr + 0.0001))
-        minus_di = 100 * (minus_dm.rolling(14).mean() / (atr + 0.0001))
-        di_sum = plus_di + minus_di
-        adx_series = 100 * (abs(plus_di - minus_di) / (di_sum + 0.0001)).rolling(14).mean()
-        plus_di_val = float(plus_di.iloc[-1]) if not pd.isna(plus_di.iloc[-1]) else 50.0
-        minus_di_val = float(minus_di.iloc[-1]) if not pd.isna(minus_di.iloc[-1]) else 50.0
-        
-        # === Awesome Oscillator ===
-        ao_series = prices.rolling(5).mean() - prices.rolling(34).mean()
-        ao = float(ao_series.iloc[-1]) if not pd.isna(ao_series.iloc[-1]) else 0.0
-        
-        # === Moving Averages ===
-        sma20 = float(prices.rolling(20).mean().iloc[-1]) if not pd.isna(prices.rolling(20).mean().iloc[-1]) else price
-        sma50 = float(prices.rolling(50).mean().iloc[-1]) if not pd.isna(prices.rolling(50).mean().iloc[-1]) else price
-        sma200 = float(prices.rolling(200).mean().iloc[-1]) if len(prices) >= 200 and not pd.isna(prices.rolling(200).mean().iloc[-1]) else None
-        ema20 = float(prices.ewm(span=20, adjust=False).mean().iloc[-1]) if not pd.isna(prices.ewm(span=20, adjust=False).mean().iloc[-1]) else price
-        ema50 = float(prices.ewm(span=50, adjust=False).mean().iloc[-1]) if not pd.isna(prices.ewm(span=50, adjust=False).mean().iloc[-1]) else price
-        
-        # === Count Oscillator Signals ===
-        osc_buy = 0
-        osc_sell = 0
-        osc_neutral = 0
-        
-        # RSI - proper neutral zone
-        if rsi < 30:
-            osc_buy += 1
-        elif rsi > 70:
-            osc_sell += 1
-        else:
-            osc_neutral += 1
-        
-        # Stochastic - proper neutral zone
-        if stoch_k_val < 20:
-            osc_buy += 1
-        elif stoch_k_val > 80:
-            osc_sell += 1
-        elif stoch_k_val > stoch_d_val and stoch_k_prev <= stoch_d_prev:
-            osc_buy += 1
-        elif stoch_k_val < stoch_d_val and stoch_k_prev >= stoch_d_prev:
-            osc_sell += 1
-        else:
-            osc_neutral += 1
-        
-        # CCI - proper neutral zone
-        if cci_val < -100:
-            osc_buy += 1
-        elif cci_val > 100:
-            osc_sell += 1
-        else:
-            osc_neutral += 1
-        
-        # MACD histogram - proper neutral zone
-        if macd_hist > 0:
-            osc_buy += 1
-        elif macd_hist < 0:
-            osc_sell += 1
-        else:
-            osc_neutral += 1
-        
-        # ADX + DI - proper neutral zone
-        if plus_di_val > minus_di_val:
-            osc_buy += 1
-        elif plus_di_val < minus_di_val:
-            osc_sell += 1
-        else:
-            osc_neutral += 1
-        
-        # Awesome Oscillator - proper neutral zone
-        if ao > 0:
-            osc_buy += 1
-        elif ao < 0:
-            osc_sell += 1
-        else:
-            osc_neutral += 1
-        
-        # Determine Oscillator Signal
-        if osc_buy >= osc_sell + 2:
-            result['oscillators'] = 'BUY'
-        elif osc_sell >= osc_buy + 2:
-            result['oscillators'] = 'SELL'
-        else:
-            result['oscillators'] = 'NEUTRAL'
-        # Include counts
-        result['osc_buy'] = osc_buy
-        result['osc_sell'] = osc_sell
-        result['osc_neutral'] = osc_neutral
-        
-        # === Count Moving Average Signals ===
-        ma_buy = 0
-        ma_sell = 0
-        ma_neutral = 0
-        
-        # Price vs MAs
-        if price > sma20:
-            ma_buy += 1
-        elif price < sma20:
-            ma_sell += 1
-        else:
-            ma_neutral += 1
-        
-        if price > sma50:
-            ma_buy += 1
-        elif price < sma50:
-            ma_sell += 1
-        else:
-            ma_neutral += 1
-        
-        if sma200:
-            if price > sma200:
-                ma_buy += 1
-            elif price < sma200:
-                ma_sell += 1
+        if price <= 0:
+            return result
+
+        _rate_oscillators(result, prices, highs, lows)
+        _rate_moving_averages(result, prices, highs, lows, vols, price)
+
+        # --- Aggregate: mean of votes -> five-state rating per group --------
+        osc_votes = result['osc_buy'] - result['osc_sell']
+        osc_total = result['osc_buy'] + result['osc_sell'] + result['osc_neutral']
+        ma_votes = result['ma_buy'] - result['ma_sell']
+        ma_total = result['ma_buy'] + result['ma_sell'] + result['ma_neutral']
+
+        os_score = (osc_votes / osc_total) if osc_total else 0.0
+        ma_score = (ma_votes / ma_total) if ma_total else 0.0
+        tech_score = (os_score + ma_score) / 2
+
+        result['os_score'] = round(os_score, 4)
+        result['ma_score'] = round(ma_score, 4)
+        result['tech_score'] = round(tech_score, 4)
+        result['os_rating'] = _rating_from_score(os_score)
+        result['ma_rating'] = _rating_from_score(ma_score)
+        result['tech_rating'] = _rating_from_score(tech_score)
+        result['oscillators'] = _simple_signal(result['os_rating'])
+        result['moving_averages'] = _simple_signal(result['ma_rating'])
+
+        # Entry-quality tag (kept for position sizing / pullback logic).
+        rsi = result['rsi']
+        if rsi is not None:
+            if rsi < PULLBACK_RSI_MAX:
+                result['entry_quality'] = 'PULLBACK'
+            elif rsi < 60:
+                result['entry_quality'] = 'BREAKOUT'
             else:
-                ma_neutral += 1
-        
-        if price > ema20:
-            ma_buy += 1
-        elif price < ema20:
-            ma_sell += 1
-        else:
-            ma_neutral += 1
-        
-        if price > ema50:
-            ma_buy += 1
-        elif price < ema50:
-            ma_sell += 1
-        else:
-            ma_neutral += 1
-        
-        # MA alignment (bullish: short MA > long MA)
-        if sma20 > sma50:
-            ma_buy += 1
-        elif sma20 < sma50:
-            ma_sell += 1
-        else:
-            ma_neutral += 1
-        
-        if ema20 > ema50:
-            ma_buy += 1
-        elif ema20 < ema50:
-            ma_sell += 1
-        else:
-            ma_neutral += 1
-        
-        # EMA > SMA (momentum confirmation)
-        if ema50 > sma50:
-            ma_buy += 1
-        elif ema50 < sma50:
-            ma_sell += 1
-        else:
-            ma_neutral += 1
-        
-        # Determine MA Signal
-        if ma_buy >= ma_sell + 3:
-            result['moving_averages'] = 'BUY'
-        elif ma_sell >= ma_buy + 3:
-            result['moving_averages'] = 'SELL'
-        else:
-            result['moving_averages'] = 'NEUTRAL'
-        # Include counts
-        result['ma_buy'] = ma_buy
-        result['ma_sell'] = ma_sell
-        result['ma_neutral'] = ma_neutral
-            
-    except Exception as e:
-        # Silently return defaults on error
+                result['entry_quality'] = 'MOMENTUM'
+    except Exception:
+        # Silently return defaults on error (bad/short data for this ticker).
         pass
-    
+
     return result
 
 
-def fetch_tradingview_technicals(tickers):
+def _extract_ohlcv(ticker, close_df, high_df, low_df, open_df, vol_df):
+    """Pull aligned close/high/low/open/volume Series for one ticker.
+
+    Handles both the flat (single-ticker) and MultiIndex (multi-ticker)
+    DataFrame shapes yfinance returns. Missing high/low/open fall back to
+    close; missing volume falls back to an empty Series.
     """
-    Fetch TradingView technical analysis for multiple tickers.
-    Returns dict: { ticker: { 'oscillators': buy/sell/neutral, 'moving_averages': buy/sell/neutral } }
-    Falls back to yfinance computation if TV API fails.
-    """
-    return {}  # Return empty - will use local computation in run_screener
+    def col(df):
+        if df is None:
+            return None
+        if ticker in getattr(df, 'columns', []):
+            return df[ticker].dropna()
+        try:
+            return df[(slice(None), ticker)].droplevel(1).dropna()
+        except Exception:
+            return None
+
+    prices = col(close_df)
+    if prices is None or prices.empty:
+        return None, None, None, None, None
+    highs = col(high_df)
+    lows = col(low_df)
+    opens = col(open_df)
+    vols = col(vol_df)
+    highs = highs if highs is not None else prices
+    lows = lows if lows is not None else prices
+    opens = opens if opens is not None else prices
+    return prices, highs, lows, opens, vols
 
 
-def fetch_tradingview_technicals_v2(ticker, close_df, high_df, low_df, open_df):
-    """Compute TV-style technicals from local data"""
-    return compute_tv_technicals_from_data(ticker, close_df, high_df, low_df, open_df)
+def _vote(details, name, value, action):
+    """Append a per-indicator row and return its -1/0/+1 contribution."""
+    details.append({'name': name, 'value': value, 'action': action})
+    return action
+
+
+def _rate_oscillators(result, prices, highs, lows):
+    """Rate the 11 TradingView oscillators, filling counts + details."""
+    details = result['osc_details']
+    votes = []
+    prev = lambda s: float(s.iloc[-2]) if len(s) >= 2 and not pd.isna(s.iloc[-2]) else None
+
+    # SMA(50) trend filter used by Stochastic RSI and Bull Bear Power.
+    sma50 = prices.rolling(50).mean()
+    price = float(prices.iloc[-1])
+    sma50_val = _last(sma50)
+    uptrend = sma50_val is not None and price > sma50_val
+    downtrend = sma50_val is not None and price < sma50_val
+
+    # --- RSI (14): Buy if <30 & rising, Sell if >70 & falling -------------
+    delta = prices.diff()
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+    rsi_series = 100 - 100 / (1 + _rma(gain, 14) / _rma(loss, 14).replace(0, np.nan))
+    rsi = _last(rsi_series)
+    rsi_prev = prev(rsi_series)
+    result['rsi'] = round(rsi, 2) if rsi is not None else None
+    if rsi is not None and rsi_prev is not None:
+        act = 1 if (rsi < 30 and rsi > rsi_prev) else -1 if (rsi > 70 and rsi < rsi_prev) else 0
+        votes.append(_vote(details, 'Relative Strength Index (14)', round(rsi, 2), act))
+
+    # --- Stochastic %K (14, 3, 3) -----------------------------------------
+    ll = lows.rolling(14).min()
+    hh = highs.rolling(14).max()
+    raw_k = 100 * (prices - ll) / (hh - ll)
+    k = raw_k.rolling(3).mean()
+    d = k.rolling(3).mean()
+    kv, dv, kp, dp = _last(k), _last(d), prev(k), prev(d)
+    if None not in (kv, dv, kp, dp):
+        act = 1 if (kv < 20 and dv < 20 and kv > dv) else -1 if (kv > 80 and dv > 80 and kv < dv) else 0
+        votes.append(_vote(details, 'Stochastic %K (14, 3, 3)', round(kv, 2), act))
+
+    # --- CCI (20): Buy if <-100 & rising, Sell if >100 & falling ----------
+    tp = (highs + lows + prices) / 3
+    mean_dev = (tp - tp.rolling(20).mean()).abs().rolling(20).mean()
+    cci_series = (tp - tp.rolling(20).mean()) / (0.015 * mean_dev)
+    cci, cci_prev = _last(cci_series), prev(cci_series)
+    if cci is not None and cci_prev is not None:
+        act = 1 if (cci < -100 and cci > cci_prev) else -1 if (cci > 100 and cci < cci_prev) else 0
+        votes.append(_vote(details, 'Commodity Channel Index (20)', round(cci, 2), act))
+
+    # --- ADX (14, 14): +DI/-DI + ADX slope --------------------------------
+    up = highs.diff()
+    down = -lows.diff()
+    plus_dm = up.where((up > down) & (up > 0), 0.0)
+    minus_dm = down.where((down > up) & (down > 0), 0.0)
+    tr = pd.concat([highs - lows, (highs - prices.shift()).abs(),
+                    (lows - prices.shift()).abs()], axis=1).max(axis=1)
+    atr = _rma(tr, 14)
+    plus_di = 100 * _rma(plus_dm, 14) / atr
+    minus_di = 100 * _rma(minus_dm, 14) / atr
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+    adx_series = _rma(dx, 14)
+    adx, adx_prev = _last(adx_series), prev(adx_series)
+    pdi, ndi = _last(plus_di), _last(minus_di)
+    if None not in (adx, adx_prev, pdi, ndi):
+        act = (1 if (pdi > ndi and adx > 20 and adx > adx_prev)
+               else -1 if (pdi < ndi and adx > 20 and adx < adx_prev) else 0)
+        votes.append(_vote(details, 'Average Directional Index (14)', round(adx, 2), act))
+
+    # --- Awesome Oscillator: zero-cross or two-bar turn -------------------
+    median = (highs + lows) / 2
+    ao_series = median.rolling(5).mean() - median.rolling(34).mean()
+    ao = _last(ao_series)
+    ao1 = float(ao_series.iloc[-2]) if len(ao_series) >= 2 and not pd.isna(ao_series.iloc[-2]) else None
+    ao2 = float(ao_series.iloc[-3]) if len(ao_series) >= 3 and not pd.isna(ao_series.iloc[-3]) else None
+    if None not in (ao, ao1, ao2):
+        buy = (ao > 0 and ao1 < 0) or (ao > 0 and ao1 > 0 and ao > ao1 and ao1 < ao2)
+        sell = (ao < 0 and ao1 > 0) or (ao < 0 and ao1 < 0 and ao < ao1 and ao1 > ao2)
+        act = 1 if buy else -1 if sell else 0
+        votes.append(_vote(details, 'Awesome Oscillator', round(ao, 2), act))
+
+    # --- Momentum (10): Buy if rising, Sell if falling --------------------
+    mom_series = prices.diff(10)
+    mom, mom_prev = _last(mom_series), prev(mom_series)
+    if mom is not None and mom_prev is not None:
+        act = 1 if mom > mom_prev else -1 if mom < mom_prev else 0
+        votes.append(_vote(details, 'Momentum (10)', round(mom, 2), act))
+
+    # --- MACD (12, 26, 9): Buy if macd > signal ---------------------------
+    macd_line = prices.ewm(span=12, adjust=False).mean() - prices.ewm(span=26, adjust=False).mean()
+    signal_line = macd_line.ewm(span=9, adjust=False).mean()
+    macd_v, sig_v = _last(macd_line), _last(signal_line)
+    result['macd'] = round(macd_v, 4) if macd_v is not None else None
+    if macd_v is not None and sig_v is not None:
+        act = 1 if macd_v > sig_v else -1 if macd_v < sig_v else 0
+        votes.append(_vote(details, 'MACD Level (12, 26)', round(macd_v, 2), act))
+
+    # --- Stochastic RSI (3, 3, 14, 14): trend-filtered --------------------
+    rsi_for_stoch = rsi_series
+    rsi_ll = rsi_for_stoch.rolling(14).min()
+    rsi_hh = rsi_for_stoch.rolling(14).max()
+    stoch_rsi = 100 * (rsi_for_stoch - rsi_ll) / (rsi_hh - rsi_ll)
+    srk = stoch_rsi.rolling(3).mean()
+    srd = srk.rolling(3).mean()
+    srk_v, srd_v = _last(srk), _last(srd)
+    if srk_v is not None and srd_v is not None:
+        act = (1 if (downtrend and srk_v < 20 and srd_v < 20 and srk_v > srd_v)
+               else -1 if (uptrend and srk_v > 80 and srd_v > 80 and srk_v < srd_v) else 0)
+        votes.append(_vote(details, 'Stochastic RSI Fast (3, 3, 14, 14)', round(srk_v, 2), act))
+
+    # --- Williams %R (14): Buy if <-80 & rising, Sell if >-20 & falling ---
+    wr_series = -100 * (hh - prices) / (hh - ll)
+    wr, wr_prev = _last(wr_series), prev(wr_series)
+    if wr is not None and wr_prev is not None:
+        act = 1 if (wr < -80 and wr > wr_prev) else -1 if (wr > -20 and wr < wr_prev) else 0
+        votes.append(_vote(details, 'Williams Percent Range (14)', round(wr, 2), act))
+
+    # --- Bull Bear Power (13): trend-filtered -----------------------------
+    ema13 = prices.ewm(span=13, adjust=False).mean()
+    bull_power = highs - ema13
+    bear_power = lows - ema13
+    bbp_series = bull_power + bear_power
+    bull_v, bull_p = _last(bull_power), prev(bull_power)
+    bear_v, bear_p = _last(bear_power), prev(bear_power)
+    bbp = _last(bbp_series)
+    if None not in (bull_v, bull_p, bear_v, bear_p, bbp):
+        act = (1 if (uptrend and bear_v < 0 and bear_v > bear_p)
+               else -1 if (downtrend and bull_v > 0 and bull_v < bull_p) else 0)
+        votes.append(_vote(details, 'Bull Bear Power', round(bbp, 2), act))
+
+    # --- Ultimate Oscillator (7, 14, 28): Buy if >70, Sell if <30 ---------
+    prev_close = prices.shift()
+    bp = prices - pd.concat([lows, prev_close], axis=1).min(axis=1)
+    tr_uo = pd.concat([highs, prev_close], axis=1).max(axis=1) - pd.concat([lows, prev_close], axis=1).min(axis=1)
+    avg7 = bp.rolling(7).sum() / tr_uo.rolling(7).sum()
+    avg14 = bp.rolling(14).sum() / tr_uo.rolling(14).sum()
+    avg28 = bp.rolling(28).sum() / tr_uo.rolling(28).sum()
+    uo_series = 100 * (4 * avg7 + 2 * avg14 + avg28) / 7
+    uo = _last(uo_series)
+    if uo is not None:
+        act = 1 if uo > 70 else -1 if uo < 30 else 0
+        votes.append(_vote(details, 'Ultimate Oscillator (7, 14, 28)', round(uo, 2), act))
+
+    result['osc_buy'] = sum(1 for v in votes if v == 1)
+    result['osc_sell'] = sum(1 for v in votes if v == -1)
+    result['osc_neutral'] = sum(1 for v in votes if v == 0)
+
+
+def _rate_moving_averages(result, prices, highs, lows, vols, price):
+    """Rate the 15 TradingView moving averages, filling counts + details.
+
+    SMA/EMA (10/20/30/50/100/200), VWMA(20) and Hull MA(9) each vote Buy when
+    the average is below price, Sell when above. The Ichimoku Base Line uses
+    the full cloud rule.
+    """
+    details = result['ma_details']
+    votes = []
+
+    def ma_vote(name, ma_val):
+        if ma_val is None:
+            return
+        act = 1 if ma_val < price else -1 if ma_val > price else 0
+        votes.append(_vote(details, name, round(ma_val, 2), act))
+
+    for length in (10, 20, 30, 50, 100, 200):
+        if len(prices) >= length:
+            ma_vote(f'Exponential Moving Average ({length})',
+                    _last(prices.ewm(span=length, adjust=False).mean()))
+            ma_vote(f'Simple Moving Average ({length})',
+                    _last(prices.rolling(length).mean()))
+
+    # Ichimoku Base Line (9, 26, 52, 26) — full cloud rule.
+    conv = (highs.rolling(9).max() + lows.rolling(9).min()) / 2
+    base = (highs.rolling(26).max() + lows.rolling(26).min()) / 2
+    span_a = ((conv + base) / 2).shift(26)
+    span_b = ((highs.rolling(52).max() + lows.rolling(52).min()) / 2).shift(26)
+    cv, bv, av, sbv = _last(conv), _last(base), _last(span_a), _last(span_b)
+    if None not in (cv, bv, av, sbv):
+        buy = av > sbv and bv > av and cv > bv and price > cv
+        sell = av < sbv and bv < av and cv < bv and price < cv
+        act = 1 if buy else -1 if sell else 0
+        votes.append(_vote(details, 'Ichimoku Base Line (9, 26, 52, 26)', round(bv, 2), act))
+
+    # VWMA (20) — falls back to SMA(20) if volume is unavailable.
+    if vols is not None and len(vols) >= 20 and float(vols.tail(20).sum()) > 0:
+        aligned_vol = vols.reindex(prices.index).fillna(0)
+        vwma = (prices * aligned_vol).rolling(20).sum() / aligned_vol.rolling(20).sum()
+        ma_vote('Volume Weighted Moving Average (20)', _last(vwma))
+    elif len(prices) >= 20:
+        ma_vote('Volume Weighted Moving Average (20)', _last(prices.rolling(20).mean()))
+
+    # Hull MA (9): WMA(2*WMA(n/2) - WMA(n), sqrt(n)).
+    if len(prices) >= 9:
+        hull = _wma(2 * _wma(prices, 4) - _wma(prices, 9), 3)
+        ma_vote('Hull Moving Average (9)', _last(hull))
+
+    result['ma_buy'] = sum(1 for v in votes if v == 1)
+    result['ma_sell'] = sum(1 for v in votes if v == -1)
+    result['ma_neutral'] = sum(1 for v in votes if v == 0)
+
 
 
 def enrich_name(ticker):
@@ -879,9 +977,14 @@ def score_ticker(ticker, close_df, vol_df, open_df, high_df, low_df):
         'Near High': near_high_20,
         'Dollar Volume': dollar_volume,
         'Leveraged': is_leveraged(ticker),
-        # TradingView Technicals (populated later via fetch_tradingview_technicals)
+        # TradingView Technical Ratings (populated later in run_screener).
+        # TV_Oscillators / TV_MovingAverages are the simple BUY/SELL/NEUTRAL
+        # forms; the *_Rating fields carry the full five-state label.
         'TV_Oscillators': 'NEUTRAL',
         'TV_MovingAverages': 'NEUTRAL',
+        'Os Rating': RATING_NEUTRAL,
+        'MA Rating': RATING_NEUTRAL,
+        'Tech Rating': RATING_NEUTRAL,
         'TV_RSI': None,
         'TV_MACD': None,
         # V4: Entry Quality & Squeeze Detection
@@ -998,44 +1101,16 @@ def calc_composite(r, bench, regime_level=4):
     return final_score
 
 
-def _signal(r, freq, rank, total, regime_level=4):
-    score = r.get('Score', 0)
-    vs = r.get('Vol Surge', 1.0)
-    acc = r.get('Acceleration', False)
-    brk = r.get('Breakout', False)
-    p3 = r.get('3D %', 0)
-    atr_pct = r.get('ATR %', 0)
+def _signal(r, freq=0, rank=0, total=0, regime_level=4):
+    """The Signal IS the TradingView Summary rating (Tech Rating).
 
-    # V5: HARD STOP OVERRIDE — force SELL regardless of other signals
-    if r.get('Hard Stop Triggered', False):
-        return 'SELL'
-    if r.get('Stop Triggered', False):
-        return 'SELL'
-
-    if score <= 0:
-        return 'SELL'
-    top_half = rank <= max(total // 2, 1)
-    has_momentum = vs > 1.3 or acc
-    is_conviction = (score > 150 and freq >= 6 and atr_pct < 8.0 and
-                 not r.get('Overextended', False))
-    is_speculative = (score > 80 and freq >= 4 and acc)
-    if is_conviction:
-        return 'STRONG BUY'
-    if score > 100 and has_momentum and freq >= 3:
-        return 'BUY'
-    if top_half and has_momentum and freq >= 2:
-        return 'BUY'
-    if top_half and freq >= 4:
-        return 'BUY'
-    if score > 50 and has_momentum:
-        return 'BUY'
-    if score > 50 and brk:
-        return 'BUY'
-    if p3 > 3 and vs > 1.5:
-        return 'BUY'
-    if is_speculative:
-        return 'BUY'
-    return 'HOLD'
+    Returns one of 'STRONG BUY', 'BUY', 'NEUTRAL', 'SELL', 'STRONG SELL' —
+    the five-state summary that aggregates the Oscillator and Moving-Average
+    ratings. `freq`/`rank`/`total`/`regime_level` are accepted for call-site
+    compatibility but no longer influence the signal.
+    """
+    tech = r.get('Tech Rating', RATING_NEUTRAL)
+    return RATING_TO_SIGNAL.get(tech, 'NEUTRAL')
 
 
 def _position_size(r, freq, signal, regime_level=4, is_bear_mode=False):
@@ -1207,8 +1282,11 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
 
     dl = list(set(all_tickers[:dl_limit]) |
               ({ensure_ticker} if ensure_ticker else set()))
-    # Use longer period for watchlist to get enough data for proper MA calculations
-    period = "3mo" if "WATCHLIST" in name else "1y"
+    # Always pull a full year: the TradingView ratings need 200+ bars so the
+    # SMA/EMA 100 & 200 and the Ichimoku cloud actually compute. A 3-month
+    # window silently dropped 5 of the 15 moving averages, which pushed names
+    # like SOXL/TECL from "Sell" to "Strong Sell" versus TradingView.
+    period = "1y"
     print(f"   Downloading {len(dl)} tickers (period={period})...")
 
     down_data = bulk_download(dl, period=period)
@@ -1298,28 +1376,33 @@ def run_screener(name, finviz_urls, bench_ticker, min_dv=30e6,
         ref_data['_reference'] = True
         results.append(ref_data)
 
-    # === Compute TradingView-style Technicals from local data ===
+    # === Compute TradingView Technical Ratings from local data ===
     if results:
-        sys.stdout.write(f"   Computing TV-style technicals for {len(results)} tickers...")
+        sys.stdout.write(f"   Computing TradingView ratings for {len(results)} tickers...")
         sys.stdout.flush()
         for r in results:
             tv = compute_tv_technicals_from_data(
-                r['Ticker'], close_df, high_df, low_df, open_df
+                r['Ticker'], close_df, high_df, low_df, open_df, vol_df
             )
             r['TV_Oscillators'] = tv.get('oscillators', 'NEUTRAL')
             r['TV_MovingAverages'] = tv.get('moving_averages', 'NEUTRAL')
+            r['Os Rating'] = tv.get('os_rating', RATING_NEUTRAL)
+            r['MA Rating'] = tv.get('ma_rating', RATING_NEUTRAL)
+            r['Tech Rating'] = tv.get('tech_rating', RATING_NEUTRAL)
             r['TV_RSI'] = tv.get('rsi')
             r['TV_MACD'] = tv.get('macd')
-            # Copy counts for display
+            # Vote counts + per-indicator breakdown for the expandable panel.
             r['osc_buy'] = tv.get('osc_buy', 0)
             r['osc_sell'] = tv.get('osc_sell', 0)
             r['osc_neutral'] = tv.get('osc_neutral', 0)
             r['ma_buy'] = tv.get('ma_buy', 0)
             r['ma_sell'] = tv.get('ma_sell', 0)
             r['ma_neutral'] = tv.get('ma_neutral', 0)
-            # V4: Update Entry Quality based on pullback detection
+            r['osc_details'] = tv.get('osc_details', [])
+            r['ma_details'] = tv.get('ma_details', [])
+            # Entry Quality tag drives pullback-based position sizing.
             r['Entry Quality'] = tv.get('entry_quality', 'MOMENTUM')
-        sys.stdout.write(f"\r   TV-style technicals computed." + " " * 20 + "\n")
+        sys.stdout.write(f"\r   TradingView ratings computed." + " " * 20 + "\n")
         sys.stdout.flush()
         
         # V4: Enrich with short squeeze data
@@ -1451,9 +1534,11 @@ td { font-size:.85rem; } tr:hover { background:#161b22; }
 """
 
 def _sig_html(sig):
-    colors = {'STRONG BUY': '#00ff7f', 'BUY': '#3fb950',
-              'SELL': '#f85149', 'HOLD': '#d29922'}
-    c = colors.get(sig, '#d29922')
+    colors = {'STRONG BUY': '#00e676', 'BUY': '#3fb950', 'NEUTRAL': '#8b949e',
+              'SELL': '#f85149', 'STRONG SELL': '#ff1744',
+              # legacy states, kept so old rows still render sensibly
+              'HOLD': '#d29922', 'WAIT': '#8b949e'}
+    c = colors.get(sig, '#8b949e')
     return f"<span style='color:{c};font-weight:bold'>{sig}</span>"
 
 def _tv_sig_html(sig, tooltip=""):
@@ -1462,21 +1547,79 @@ def _tv_sig_html(sig, tooltip=""):
     title_attr = f' title="{tooltip}"' if tooltip else ''
     return f"<span class='tv-sig {cls}'{title_attr}>{sig}</span>"
 
+def _indicator_table_html(title, details, buy, neutral, sell):
+    """Render one TradingView-style indicator table (Name / Value / Action).
+
+    `details` is the list of {'name', 'value', 'action'} rows produced by the
+    ratings engine; buy/neutral/sell are the summary vote counts shown as a
+    header line, exactly like the TradingView Oscillators / Moving Averages
+    panels.
+    """
+    if not details:
+        return ""
+    action_style = {1: 'color:#3fb950', 0: 'color:#8b949e', -1: 'color:#f85149'}
+    action_word = {1: 'Buy', 0: 'Neutral', -1: 'Sell'}
+    body = ""
+    for d in details:
+        act = d['action']
+        val = d['value']
+        val_str = f"{val:,.2f}" if isinstance(val, (int, float)) else str(val)
+        body += (
+            f"<tr><td style='text-align:left;color:#c9d1d9'>{d['name']}</td>"
+            f"<td style='text-align:right;color:#8b949e'>{val_str}</td>"
+            f"<td style='text-align:right;{action_style.get(act)};font-weight:600'>"
+            f"{action_word.get(act, 'Neutral')}</td></tr>"
+        )
+    return (
+        f"<div style='min-width:280px'>"
+        f"<div style='color:#8b949e;font-weight:600;margin-bottom:4px'>{title} "
+        f"<span style='color:#3fb950'>{buy} Buy</span> · "
+        f"<span style='color:#8b949e'>{neutral} Neutral</span> · "
+        f"<span style='color:#f85149'>{sell} Sell</span></div>"
+        f"<table style='width:100%;font-size:0.75rem'>{body}</table></div>"
+    )
+
+
+def _rating_html(rating):
+    """Render a five-state TradingView rating as a color-coded label.
+
+    STRONG_BUY / BUY = green (double vs single chevron), NEUTRAL = grey,
+    SELL / STRONG_SELL = red — mirroring the TradingView screener columns.
+    """
+    styles = {
+        RATING_STRONG_BUY:  ('#00e676', '⧉'),
+        RATING_BUY:         ('#3fb950', '︿'),
+        RATING_NEUTRAL:     ('#8b949e', '—'),
+        RATING_SELL:        ('#f85149', '﹀'),
+        RATING_STRONG_SELL: ('#ff1744', '⧈'),
+    }
+    color, mark = styles.get(rating, ('#8b949e', '—'))
+    label = RATING_LABELS.get(rating, 'Neutral')
+    return f"<span style='color:{color};font-weight:600'>{mark} {label}</span>"
+
+
 def _format_tv_signal(r):
-    """Format TV signals - simple BUY/SELL/NEUTRAL like TradingView Summary"""
-    # Get the oscillator signal (BUY/SELL/NEUTRAL)
-    osc_sig = r.get('TV_Oscillators', 'NEUTRAL')
-    
-    # Get the moving average signal (BUY/SELL/NEUTRAL)
-    ma_sig = r.get('TV_MovingAverages', 'NEUTRAL')
-    
-    return osc_sig, ma_sig
+    """Return the simple BUY/SELL/NEUTRAL oscillator & MA signals (BUY-bias use)."""
+    return r.get('TV_Oscillators', 'NEUTRAL'), r.get('TV_MovingAverages', 'NEUTRAL')
 
 def generate_html_v3(regime, sections, mode, all_freqs):
     now = f"{datetime.now():%Y-%m-%d %H:%M}"
     alloc = regime['allocation_pct']
     regime_cls = 'sell' if alloc == 0 else ('buy' if alloc >= 60 else 'cautious')
-    
+
+    # Counter-trend warning: when the regime is defensive (CAUTIOUS / RISK OFF),
+    # make that context explicit so any green TradingView BUY signals don't hide
+    # the fact that they run against the broader market.
+    counter_trend_banner = ""
+    if regime.get('level', 4) <= 2:
+        counter_trend_banner = (
+            "<div style=\"background:#3d2a0d;border:1px solid #d29922;"
+            "border-radius:6px;padding:10px 14px;margin:10px 0;color:#f0c674;"
+            "font-size:0.9rem;\">⚠️ Market regime is "
+            f"<b>{regime['label']}</b> — any TradingView BUY signals are "
+            "<b>counter-trend</b>. Size down and honor stops.</div>"
+        )
+
     c = regime['components']
     spy_p = c.get('spy_price', 'N/A')
     spy_ma = c.get('spy_ma200', 'N/A')
@@ -1505,22 +1648,44 @@ function toggleDetails(row){
   }
 }
 function copyWatchlist(){
-  var watchlistData = window.watchlistData || [];
-  if(watchlistData.length === 0){
+  var data = window.watchlistData || [];
+  var btn = document.querySelector('.copy-btn');
+  if(data.length === 0){
     alert('No watchlist data available');
     return;
   }
-  var text = 'today stocks:\\n';
-  watchlistData.forEach(function(item){
-    text += item.ticker + ' ' + item.signal + '\\n';
+  var icon = {'Strong Buy':'🟢🟢','Buy':'🟢','Neutral':'⚪','Sell':'🔴','Strong Sell':'🔴🔴'};
+  var lines = [];
+  lines.push('📊 Watchlist — ' + (window.watchlistDate || ''));
+  lines.push('(TradingView Technical Ratings)');
+  lines.push('');
+  data.forEach(function(it){
+    var badge = icon[it.signal] || '';
+    var row = badge + ' $' + it.ticker + ' — ' + it.signal;
+    var extras = [];
+    if(it.score !== undefined) extras.push('Score ' + it.score);
+    if(it.today && it.today !== 'N/A') extras.push(it.today);
+    extras.push('MA ' + it.ma);
+    extras.push('Os ' + it.os);
+    row += ' (' + extras.join(' · ') + ')';
+    lines.push(row);
   });
+  lines.push('');
+  lines.push('Signal = TradingView Summary rating.');
+  var text = lines.join('\\n');
   navigator.clipboard.writeText(text).then(function(){
-    var btn = document.querySelector('.copy-btn');
     var orig = btn.textContent;
     btn.textContent = '✓ Copied!';
     setTimeout(function(){ btn.textContent = orig; }, 2000);
   }).catch(function(err){
-    alert('Failed to copy: ' + err);
+    // Fallback for browsers/permissions where the async clipboard API fails
+    // (e.g. file:// pages): use a temporary textarea + execCommand.
+    var ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); btn.textContent = '✓ Copied!';
+          setTimeout(function(){ btn.textContent = '📋 Copy Watchlist'; }, 2000); }
+    catch(e){ alert('Failed to copy: ' + err); }
+    document.body.removeChild(ta);
   });
 }
 document.addEventListener('DOMContentLoaded',function(){
@@ -1549,6 +1714,7 @@ document.addEventListener('DOMContentLoaded',function(){
 <body><div class="c">
 <h1>V4 Master Router ({mode})</h1><p class="date">{now}</p>
 <div class="sig {regime_cls}">{regime['label']}</div>
+{counter_trend_banner}
 <button class="copy-btn" onclick="copyWatchlist()">📋 Copy Watchlist</button>
 <div class="metrics">
 <div class="m"><div class="ml">Regime Score</div><div class="mv">{regime['score']}/100</div></div>
@@ -1586,6 +1752,7 @@ document.addEventListener('DOMContentLoaded',function(){
             if '15D' not in exclude_cols:
                 ncols += 1
         ncols += 2  # '$Vol', 'Score'
+        ncols += 3  # 'Tech', 'MA', 'Os' TradingView ratings
         ncols += 1  # 'Signal'
         ncols += 1  # 'BUY TODAY'
 
@@ -1603,7 +1770,12 @@ document.addEventListener('DOMContentLoaded',function(){
                     cols += f"<td>{fmt_pct(r.get('15D %'))}</td>"
             cols += f"<td>{fmt_dollar_volume(r.get('Dollar Volume'))}</td><td>{r.get('Score', 0):.0f}</td>"
 
-            # Own Technical Analysis (script)
+            # TradingView Technical Ratings — Tech (summary), MA, Os.
+            cols += f"<td>{_rating_html(r.get('Tech Rating', RATING_NEUTRAL))}</td>"
+            cols += f"<td>{_rating_html(r.get('MA Rating', RATING_NEUTRAL))}</td>"
+            cols += f"<td>{_rating_html(r.get('Os Rating', RATING_NEUTRAL))}</td>"
+
+            # Signal = TradingView Summary rating (same five states as Tech).
             cols += f"<td>{_sig_html(s)}</td>"
             
             # TradingView signals still used for BUY TODAY calculation but not shown as columns
@@ -1648,6 +1820,7 @@ document.addEventListener('DOMContentLoaded',function(){
                     <div class="detail-grid">
                         <div class="detail-item"><div class="detail-label">ATR %</div><div class="detail-value {'warning' if atr_pct_val > 8 else ''}">{atr_pct_val:.1f}%</div></div>
                         <div class="detail-item"><div class="detail-label">Freq</div><div class="detail-value">{freq}/{MAX_HISTORY}</div></div>
+                        <div class="detail-item"><div class="detail-label">Summary Rating</div><div class="detail-value">{RATING_LABELS.get(r.get('Tech Rating', RATING_NEUTRAL), 'Neutral')} ({r.get('osc_buy', 0) + r.get('ma_buy', 0)}B/{r.get('osc_neutral', 0) + r.get('ma_neutral', 0)}N/{r.get('osc_sell', 0) + r.get('ma_sell', 0)}S)</div></div>
                         <div class="detail-item"><div class="detail-label">Drawdown from Peak</div><div class="detail-value {'sell' if hard_stop_hit else ('warning' if drawdown < -10 else '')}">{drawdown:.1f}%</div></div>
                         <div class="detail-item"><div class="detail-label">Hard Stop</div><div class="detail-value {'sell' if hard_stop_hit else ''}">{'-' if hard_stop_hit else ''}{hard_stop_pct:.0f}% {'⚠️ TRIGGERED' if hard_stop_hit else ''}</div></div>
                         <div class="detail-item"><div class="detail-label">Margin Mode</div><div class="detail-value {'warning' if MARGIN_MODE else ''}">{'ON ⚠️' if MARGIN_MODE else 'OFF'}</div></div>
@@ -1664,6 +1837,10 @@ document.addEventListener('DOMContentLoaded',function(){
                         <div class="detail-item"><div class="detail-label">Overextended</div><div class="detail-value {'sell' if overext else ''}">{'✗' if overext else '✓'}</div></div>
                         <div class="detail-item"><div class="detail-label">TV RSI</div><div class="detail-value {'warning' if tv_rsi_val and tv_rsi_val < 30 else ('sell' if tv_rsi_val and tv_rsi_val > 70 else '')}">{tv_rsi_val:.0f}</div></div>
                     </div>
+                    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px">
+                        {_indicator_table_html('Oscillators', r.get('osc_details', []), r.get('osc_buy', 0), r.get('osc_neutral', 0), r.get('osc_sell', 0))}
+                        {_indicator_table_html('Moving Averages', r.get('ma_details', []), r.get('ma_buy', 0), r.get('ma_neutral', 0), r.get('ma_sell', 0))}
+                    </div>
                 </td>
             </tr>
             """
@@ -1676,6 +1853,9 @@ document.addEventListener('DOMContentLoaded',function(){
             if '15D' not in exclude_cols:
                 header += "<th>15D</th>"
         header += "<th>$Vol</th><th>Score</th>"
+        header += "<th class='tv-header'>Tech<br>Rating</th>"
+        header += "<th class='tv-header'>MA<br>Rating</th>"
+        header += "<th class='tv-header'>Os<br>Rating</th>"
         header += "<th class='tv-header'>Signal</th>"
         header += "<th class='tv-header'>BUY<br>TODAY</th>"
         
@@ -1703,25 +1883,27 @@ document.addEventListener('DOMContentLoaded',function(){
             f"<tbody>{hist_rows}</tbody></table>"
         )
     
-    # Generate watchlist data for copy button
+    # Build shareable watchlist payload for the Copy button. Each entry carries
+    # the TradingView summary plus the per-group ratings and today's move, so
+    # the copied text is a self-contained snapshot you can paste anywhere.
     watchlist_data = []
     for item in sections:
-        if len(item) == 3:
-            results, title, exclude_cols = item
-        else:
-            results, title = item
-            exclude_cols = []
-
+        results, title = (item[0], item[1])
         if 'Watchlist' in title and results:
-            for i, r in enumerate(results, 1):
-                tk = r['Ticker']
-                freq = all_freqs.get(tk, 0)
-                sig = _signal(r, freq, i, len(results), regime.get('level', 4))
-                watchlist_data.append({'ticker': tk, 'signal': sig})
+            for r in results:
+                watchlist_data.append({
+                    'ticker': r['Ticker'],
+                    'signal': RATING_LABELS.get(r.get('Tech Rating', RATING_NEUTRAL), 'Neutral'),
+                    'ma': RATING_LABELS.get(r.get('MA Rating', RATING_NEUTRAL), 'Neutral'),
+                    'os': RATING_LABELS.get(r.get('Os Rating', RATING_NEUTRAL), 'Neutral'),
+                    'today': fmt_pct(r.get('Today %')),
+                    'price': r.get('Price'),
+                    'score': int(r.get('Score', 0)),
+                })
             break
 
-    # Inject watchlist data into JavaScript using proper JSON encoding
-    watchlist_js = "<script>window.watchlistData = " + json.dumps(watchlist_data) + ";</script>"
+    watchlist_js = ("<script>window.watchlistData = " + json.dumps(watchlist_data)
+                    + "; window.watchlistDate = " + json.dumps(now) + ";</script>")
 
     html += watchlist_js + "</div></body></html>"
 
@@ -1766,9 +1948,10 @@ def print_table(title, results, bench_ticker, bench, all_freqs, regime_level=4, 
         print("  No results")
         return
 
-    hdr = f"  {'#':>3}  {'Ticker':<7} {'Today':>7} {'$Vol':>10} {'Score':>7} {'ATR%':>7} {'Freq':>6} {'Signal':<12} {'Size':>7}"
+    hdr = (f"  {'#':>3}  {'Ticker':<7} {'Today':>7} {'$Vol':>10} {'Score':>7} "
+           f"{'Tech':>11} {'MA':>11} {'Os':>11} {'ATR%':>7} {'Freq':>6} {'Signal':<12} {'Size':>7}")
     print(hdr)
-    print("  " + "-" * 82)
+    print("  " + "-" * 118)
 
     for i, r in enumerate(results[:15], 1):
         tk = r['Ticker']
@@ -1776,9 +1959,13 @@ def print_table(title, results, bench_ticker, bench, all_freqs, regime_level=4, 
         sig = _signal(r, freq, i, len(results), regime_level)
         best_score = results[0].get('Score', 0) if results else 0
         size = _get_adjusted_size(r, i, best_score, freq, sig, regime_level, is_bear_mode)
+        tech = RATING_LABELS.get(r.get('Tech Rating', RATING_NEUTRAL), 'Neutral')
+        ma = RATING_LABELS.get(r.get('MA Rating', RATING_NEUTRAL), 'Neutral')
+        os_ = RATING_LABELS.get(r.get('Os Rating', RATING_NEUTRAL), 'Neutral')
         print(f"  {i:>3}  {tk:<7} {fmt_pct(r.get('Today %')):>7} "
               f"{fmt_dollar_volume(r.get('Dollar Volume')):>10} "
-              f"{r.get('Score', 0):>7.0f} {r.get('ATR %', 0):>6.1f}% "
+              f"{r.get('Score', 0):>7.0f} {tech:>11} {ma:>11} {os_:>11} "
+              f"{r.get('ATR %', 0):>6.1f}% "
               f"{freq:>4}/{MAX_HISTORY} {sig:<12} {size:>7}")
 
 def print_portfolio_v3(picks, is_bear, all_freqs):
@@ -1830,6 +2017,11 @@ def print_portfolio_v3(picks, is_bear, all_freqs):
 
         tag = " *** TOP CONVICTION" if i == 1 else ""
         print(f"\n  #{i}  {r['Ticker']}{tag}")
+        # Signal = TradingView Summary rating.
+        sig = r.get('Signal', '')
+        if sig:
+            tech = RATING_LABELS.get(r.get('Tech Rating', RATING_NEUTRAL), 'Neutral')
+            print(f"      TradingView Signal: {sig}  (Tech Rating: {tech})")
         print(f"      Price: ${price:.2f}  |  Score: {score:.1f}  |  Tier: {tier}")
         print(f"      Drawdown: {drawdown:.1f}% from peak  |  Hard Stop: -{hard_stop:.0f}% (${hard_stop_price:.2f})")
         if r.get('Hard Stop Triggered'):
@@ -1909,7 +2101,14 @@ def main():
         ticker_list=WATCHLIST_TICKERS,
         force_show=True  # Bypass all filters
     )
-    
+
+    # === Stamp the Signal = TradingView Summary rating on every row =====
+    # The signal is fully determined by each row's Tech Rating (already
+    # computed in run_screener), so this is just a stateless mapping.
+    all_rows = stocks + etfs + bull_etfs_res + watchlist_res
+    for r in all_rows:
+        r['Signal'] = _signal(r)
+
     # Sort each table by 15D performance
     stocks.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
     etfs.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
@@ -1930,6 +2129,9 @@ def main():
             min_dv=5e6, dl_limit=80,
             ticker_list=BEAR_ETFS
         )
+        # Bear ETFs are screened after the main pass — stamp their signal too.
+        for r in bear_etfs:
+            r['Signal'] = _signal(r)
         bear_etfs.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
         print_table("BEAR ETFs", bear_etfs, "SPY", etf_bench_bear, all_freqs, regime['level'], is_bear_mode)
         print_portfolio_v3(bear_etfs, True, all_freqs)
@@ -1962,43 +2164,16 @@ def main():
             all_etf_combined.append(w)
             seen_tickers.add(w['Ticker'])
     
-    # Categorize all tickers by signal
-    all_strong_buy = []
-    all_buy = []
-    all_hold = []
+    # Categorize by TradingView signal: SELL / STRONG SELL flag the avoid list.
     all_sell = []
     all_low_score = []
-    
-    for i, t in enumerate(all_etf_combined, 1):
-        tk = t['Ticker']
-        freq = all_freqs.get(tk, 0)
-        sig = _signal(t, freq, i, len(all_etf_combined))
-        score = t.get('Score', 0)
-        
-        if sig == 'STRONG BUY':
-            all_strong_buy.append(t)
-        elif sig == 'BUY':
-            all_buy.append(t)
-        elif sig == 'HOLD':
-            all_hold.append(t)
-        elif sig == 'SELL':
+    for t in all_etf_combined:
+        sig = _signal(t)
+        if sig in ('SELL', 'STRONG SELL'):
             all_sell.append(t)
-        
-        if score <= 0:
+        if t.get('Score', 0) <= 0:
             all_low_score.append(t)
-    
-    # Sort each category by score descending
-    all_strong_buy.sort(key=lambda x: x.get('Score', 0), reverse=True)
-    all_buy.sort(key=lambda x: x.get('Score', 0), reverse=True)
-    all_hold.sort(key=lambda x: x.get('Score', 0), reverse=True)
-    all_sell.sort(key=lambda x: x.get('Score', 0), reverse=True)
-    all_low_score.sort(key=lambda x: x.get('Score', 0), reverse=True)
-    
-    
-    # Re-sort all categories by 15D performance
-    all_strong_buy.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
-    all_buy.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
-    all_hold.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
+
     all_sell.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
     all_low_score.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
 

@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Local backups
+backups/
+*.backup_*
+
+# Obsolete swing-signal state (removed from the tool)
+history/swing_state.json
+history/swing_state.json.bak
