@@ -85,7 +85,7 @@ SQUEEZE_BONUS = 30  # Score bonus for squeeze candidates
 SECTOR_ETFS = ['XLK', 'XLE', 'XLV', 'XLY', 'XLF', 'XLRE']
 
 # Always-visible watchlist tickers
-WATCHLIST_TICKERS = ['SOXL', 'DRAM','SOXX','LABU']
+WATCHLIST_TICKERS = ['SOXL', 'DRAM','SOXX','LABU','TNA','EWT','QQQA','SPMO','TECL','UPRO','UDOW']
 
 
 def get_sector_rotation():
