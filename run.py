@@ -301,6 +301,121 @@ def _simple_signal(rating):
     return 'NEUTRAL'
 
 
+# Points awarded to each five-state Tech Rating when ranking Featured ETFs.
+# The signal is the dominant term: a Strong Buy starts 40 pts ahead of a plain
+# Buy, and Sell / Strong Sell go negative so they can never lead on trailing
+# performance alone (the old bug).
+_SIGNAL_POINTS = {
+    RATING_STRONG_BUY: 100,
+    RATING_BUY: 60,
+    RATING_NEUTRAL: 15,
+    RATING_SELL: -80,
+    RATING_STRONG_SELL: -150,
+}
+
+
+def suggest_action(r):
+    """Plain-English action for a row, driven by its TradingView summary + health.
+
+    Used for the watchlist Suggestion column and for the Featured section so the
+    two stay consistent. Health guards (stop hit / overextended) override an
+    otherwise-bullish rating.
+    """
+    tech = r.get('Tech Rating', RATING_NEUTRAL)
+    if r.get('Stop Triggered') or r.get('Hard Stop Triggered') or tech == RATING_STRONG_SELL:
+        return 'AVOID / EXIT'
+    if tech == RATING_SELL:
+        return 'REDUCE'
+    if tech == RATING_STRONG_BUY:
+        # A strong buy that has already run hard is a hold, not a fresh add.
+        if r.get('Overextended'):
+            return 'HOLD (extended)'
+        return 'ACCUMULATE'
+    if tech == RATING_BUY:
+        if r.get('Overextended'):
+            return 'HOLD (extended)'
+        return 'BUY / ADD'
+    return 'HOLD'
+
+
+def featured_score(r):
+    """Composite used to rank the Featured ETFs.
+
+    Fixes the old `featured_soft` bias where trailing 20-day return dominated
+    and the real five-state signal was ignored. Structure:
+      1. Signal quality (dominant): Tech Rating points + model Score + Os/MA
+         agreement.
+      2. Momentum confirmation (capped so a single blow-off move can't win).
+      3. Soft health penalties for overextension / drawdown.
+    Hard filters (SELL rating, stop triggered, illiquid) are applied by the
+    caller before ranking — this function only orders the survivors.
+    """
+    tech = r.get('Tech Rating', RATING_NEUTRAL)
+    signal_pts = _SIGNAL_POINTS.get(tech, 0)
+
+    score = r.get('Score', 0) or 0
+
+    # Oscillator / MA agreement bonus.
+    agree = 0
+    if r.get('TV_Oscillators') == 'BUY':
+        agree += 15
+    if r.get('TV_MovingAverages') == 'BUY':
+        agree += 15
+
+    p3 = r.get('3D %', 0) or 0
+    p5 = r.get('5D %', 0) or 0
+    p15d = r.get('15D %', 0) or 0
+
+    # Trailing return helps but is capped at +25% so a +80% runner can't buy
+    # its way to #1 on momentum alone.
+    momentum = min(p15d, 25) * 1.2 + p5 * 0.8 + p3 * 0.5
+    if r.get('Acceleration'):
+        momentum += 8
+    if r.get('Breakout'):
+        momentum += 6
+
+    composite = signal_pts + score * 0.4 + agree + momentum
+
+    # Soft health penalties (hard exclusions happen in the caller).
+    if r.get('Overextended'):
+        composite *= 0.85
+    drawdown = r.get('Drawdown %', 0) or 0
+    if drawdown < -12:
+        composite *= 0.90
+
+    return composite
+
+
+def select_featured_etfs(pool, n=5, min_vol=5_000_000):
+    """Pick the top-N Featured ETFs from `pool`.
+
+    Hard-filters out names that shouldn't be featured (SELL/Strong Sell rating,
+    stop triggered, illiquid), ranks the rest by `featured_score`, then — only
+    if fewer than N survive — backfills from the remaining pool (still ranked)
+    so the section always shows up to N.
+    """
+    def liquid(r):
+        return (r.get('Dollar Volume', 0) or 0) >= min_vol
+
+    healthy, rest = [], []
+    for r in pool:
+        tech = r.get('Tech Rating', RATING_NEUTRAL)
+        blocked = (tech in (RATING_SELL, RATING_STRONG_SELL)
+                   or r.get('Stop Triggered') or r.get('Hard Stop Triggered'))
+        if liquid(r) and not blocked:
+            healthy.append(r)
+        else:
+            rest.append(r)
+
+    healthy.sort(key=featured_score, reverse=True)
+    if len(healthy) >= n:
+        return healthy[:n]
+
+    # Backfill lower-conviction names so the section still shows N rows.
+    rest.sort(key=featured_score, reverse=True)
+    return (healthy + rest)[:n]
+
+
 def _last(series, default=None):
     """Last finite value of a Series, or `default` if empty/NaN."""
     if series is None or len(series) == 0:
@@ -1733,14 +1848,17 @@ document.addEventListener('DOMContentLoaded',function(){
         
         # Determine section styling class
         section_class = ""
-        if "★ TOP 5" in title:
+        if "FEATURED" in title:
             section_class = "top-featured"
         elif "SELL Signal" in title:
             section_class = "sell-section"
         elif "Score ≤ 0" in title:
             section_class = "avoid-section"
-        
+
         is_sell_section = 'SELL' in title
+        # Show the plain-English Suggestion column on the two decision-focused
+        # tables: the Featured picks and the Watchlist.
+        show_suggestion = ('FEATURED' in title) or ('Watchlist' in title)
 
         # Number of visible columns in this table — used for the details-row
         # colspan so the expanded panel spans the full width.
@@ -1755,6 +1873,8 @@ document.addEventListener('DOMContentLoaded',function(){
         ncols += 3  # 'Tech', 'MA', 'Os' TradingView ratings
         ncols += 1  # 'Signal'
         ncols += 1  # 'BUY TODAY'
+        if show_suggestion:
+            ncols += 1  # 'Suggestion'
 
         rows = ""
         for i, r in enumerate(results[:15], 1):
@@ -1794,7 +1914,18 @@ document.addEventListener('DOMContentLoaded',function(){
             
             # Position Size - show BUY TODAY % with green highlight
             cols += f"<td style='font-weight:bold;color:#00ff7f'>{buy_today_pct}%</td>"
-            
+
+            # Suggestion — plain-English action, color-coded (Featured/Watchlist).
+            if show_suggestion:
+                sug = suggest_action(r)
+                sug_color = ('#00e676' if sug == 'ACCUMULATE'
+                             else '#3fb950' if sug == 'BUY / ADD'
+                             else '#f85149' if sug in ('AVOID / EXIT', 'REDUCE')
+                             else '#d29922' if 'extended' in sug
+                             else '#8b949e')
+                cols += (f"<td style='font-weight:600;color:{sug_color};"
+                         f"white-space:nowrap'>{sug}</td>")
+
             # Build hidden details for expanded view
             short_pct = r.get('Short Interest', 0) or 0
             si_cls = 'sell' if short_pct >= 20 else 'warning' if short_pct >= 10 else ''
@@ -1858,7 +1989,9 @@ document.addEventListener('DOMContentLoaded',function(){
         header += "<th class='tv-header'>Os<br>Rating</th>"
         header += "<th class='tv-header'>Signal</th>"
         header += "<th class='tv-header'>BUY<br>TODAY</th>"
-        
+        if show_suggestion:
+            header += "<th class='tv-header'>Sugg&shy;estion</th>"
+
         section_attrs = f" class='{section_class}'" if section_class else ""
         return f"<h2>{title}</h2><table{section_attrs}><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
 
@@ -1936,7 +2069,8 @@ def print_regime(regime):
         alloc_label = "OVERWEIGHT" if mult_pct > 100 else "UNDERWEIGHT" if mult_pct < 100 else "NEUTRAL"
         print(f"  Allocation: {alloc_label} ({mult_pct}%)")
 
-def print_table(title, results, bench_ticker, bench, all_freqs, regime_level=4, is_bear_mode=False):
+def print_table(title, results, bench_ticker, bench, all_freqs, regime_level=4,
+                is_bear_mode=False, show_suggestion=False):
     print(f"\n{SEP}")
     print(f"  {title}")
     print(f"{SEP}")
@@ -1950,8 +2084,10 @@ def print_table(title, results, bench_ticker, bench, all_freqs, regime_level=4, 
 
     hdr = (f"  {'#':>3}  {'Ticker':<7} {'Today':>7} {'$Vol':>10} {'Score':>7} "
            f"{'Tech':>11} {'MA':>11} {'Os':>11} {'ATR%':>7} {'Freq':>6} {'Signal':<12} {'Size':>7}")
+    if show_suggestion:
+        hdr += f" {'Suggestion':<15}"
     print(hdr)
-    print("  " + "-" * 118)
+    print("  " + "-" * (118 + (16 if show_suggestion else 0)))
 
     for i, r in enumerate(results[:15], 1):
         tk = r['Ticker']
@@ -1962,11 +2098,14 @@ def print_table(title, results, bench_ticker, bench, all_freqs, regime_level=4, 
         tech = RATING_LABELS.get(r.get('Tech Rating', RATING_NEUTRAL), 'Neutral')
         ma = RATING_LABELS.get(r.get('MA Rating', RATING_NEUTRAL), 'Neutral')
         os_ = RATING_LABELS.get(r.get('Os Rating', RATING_NEUTRAL), 'Neutral')
-        print(f"  {i:>3}  {tk:<7} {fmt_pct(r.get('Today %')):>7} "
-              f"{fmt_dollar_volume(r.get('Dollar Volume')):>10} "
-              f"{r.get('Score', 0):>7.0f} {tech:>11} {ma:>11} {os_:>11} "
-              f"{r.get('ATR %', 0):>6.1f}% "
-              f"{freq:>4}/{MAX_HISTORY} {sig:<12} {size:>7}")
+        line = (f"  {i:>3}  {tk:<7} {fmt_pct(r.get('Today %')):>7} "
+                f"{fmt_dollar_volume(r.get('Dollar Volume')):>10} "
+                f"{r.get('Score', 0):>7.0f} {tech:>11} {ma:>11} {os_:>11} "
+                f"{r.get('ATR %', 0):>6.1f}% "
+                f"{freq:>4}/{MAX_HISTORY} {sig:<12} {size:>7}")
+        if show_suggestion:
+            line += f" {suggest_action(r):<15}"
+        print(line)
 
 def print_portfolio_v3(picks, is_bear, all_freqs):
     print(f"\n{SEP2}")
@@ -2117,7 +2256,7 @@ def main():
     print_table("STOCKS", stocks, "SOXL", stock_bench, all_freqs, regime['level'], is_bear_mode)
     print_table("BULL ETFs", etfs, "QQQ", etf_bench, all_freqs, regime['level'], is_bear_mode)
     print_table("TOP BULL LONGS", bull_etfs_res, "QQQ", bull_etf_bench, all_freqs, regime['level'], is_bear_mode)
-    print_table("WATCHLIST", watchlist_res, "QQQ", watchlist_bench, all_freqs, regime['level'], is_bear_mode)
+    print_table("WATCHLIST", watchlist_res, "QQQ", watchlist_bench, all_freqs, regime['level'], is_bear_mode, show_suggestion=True)
 
     bear_etfs = []
     if is_bear_mode:
@@ -2178,34 +2317,20 @@ def main():
     all_low_score.sort(key=lambda x: x.get('15D %', 0) or 0, reverse=True)
 
     
-    # Top 3 Featured ETFs - prioritize by 20-day (15D) performance and TV signals
-    # Sort by 13W performance when available, making best monthly performer #1
-    # Sort by 20-day (15D) performance when available, making best performer #1
-    # Require minimum $100M volume for featured (exclude low liquidity ETFs)
+    # Top 5 Featured ETFs — rank by the real TradingView signal first, then
+    # capped momentum confirmation, with hard health guards. This replaces the
+    # old trailing-performance-dominated `featured_soft` sort (which could
+    # feature stale runners or even SELL-rated names). See featured_score /
+    # select_featured_etfs for the full rationale.
     MIN_VOL_FEATURED = 5_000_000
-    def featured_soft(soft):
-        score = soft.get('Score', 0)
-        p15d = soft.get('15D %', 0) if soft.get('15D %') else 0  # ~20 trading days
-        tv_buy = 1 if soft.get('TV_Oscillators') == 'BUY' else 0
-        tv_buy += 1 if soft.get('TV_MovingAverages') == 'BUY' else 0
-        # Use Dollar Volume (not $Vol) - penalize low volume heavily
-        vol = soft.get('Dollar Volume', 0)
-        if vol < MIN_VOL_FEATURED:
-            # Too low - push to bottom
-            return -10000 + p15d
-        # Good volume - use full ranking, prioritizing 20-day performance
-        return (p15d * 5 + score * 0.5 + tv_buy * 50)
-    
-    # Get all STRONG BUY + BUY ETFs, add KORU if not present (has strong TV BUY signals)
-    # Use ALL ETFs as the pool — rank by 20-day performance, TV signals, and volume
-    all_etfs_ranked = sorted(all_etf_combined, key=featured_soft, reverse=True)
-    top_featured = all_etfs_ranked[:3]
+    top_featured = select_featured_etfs(
+        all_etf_combined, n=5, min_vol=MIN_VOL_FEATURED)
     # sections: (results, title, exclude_cols)
     sections = []
     
     # Top 3 Featured ETFs - highlighted section
     if top_featured:
-        sections.append((top_featured, "★ TOP 3 FEATURED ETFS ★", ['Today', 'ATR%']))
+        sections.append((top_featured, "★ TOP 5 FEATURED ETFS ★", ['Today', 'ATR%']))
     
     # ALL ETFs section - shows everything
     all_etfs_sorted = sorted(all_etf_combined, key=lambda x: x.get('15D %', 0) or 0, reverse=True)
